@@ -33,7 +33,6 @@ void client::sendstring(const char* str)
   {
     if (!str) throw FILE_IO_ERROR;
     size_t rmsz = strlen(str);
-printf("rmsz=%ld\n",rmsz);
     char* p = const_cast<char*>(str);
     while (rmsz>0)
     {
@@ -42,9 +41,8 @@ printf("rmsz=%ld\n",rmsz);
       memcpy(buf, p, cpsz);
       if ((byte_sent = write(socket_fd, buf, cpsz))
 	  !=cpsz) throw FILE_IO_ERROR;
-printf("sent: %s\n", buf);
       p+=cpsz;
-    }    
+    }
   }
   catch (int e)
   {

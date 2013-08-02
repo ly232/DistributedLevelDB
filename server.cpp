@@ -83,21 +83,36 @@ int server::accept_conn()
     struct hostent *hostp; // client host info
     char *hostaddrp; // dotted decimal host addr string
     int comm_sock_fd; // socket descriptor to communicat with clienet
+    bool knownclient = true;
                       // note this is not the same as sock_fd!!!
 
     //socket accepting:
     if ((comm_sock_fd = 
 	 accept(socket_fd, (struct sockaddr*) &claddr, &claddr_len))<0)
+    {
+      std::cerr<<"sock accept err 1"<<std::endl;
       throw SOCKET_ACCEPT_ERROR;
+    }
     // gethostbyaddr: determine who sent the message 
     hostp = gethostbyaddr((const char *)&claddr.sin_addr.s_addr, 
 			  sizeof(claddr.sin_addr.s_addr), AF_INET);
     if (hostp == NULL)
-      throw SOCKET_ACCEPT_ERROR;
-    hostaddrp = inet_ntoa(claddr.sin_addr);
-    if (hostaddrp == NULL)
-      throw SOCKET_ACCEPT_ERROR;
-    printf("server established connection with %s (%s)\n", 
+    {
+      //client ip unknown
+      knownclient = false;
+      //throw SOCKET_ACCEPT_ERROR;
+    }
+    else
+    {
+      hostaddrp = inet_ntoa(claddr.sin_addr);
+      if (hostaddrp == NULL)
+      {
+	//client port unknown
+        knownclient = false;
+	//throw SOCKET_ACCEPT_ERROR;
+      }
+    }
+    if(knownclient) printf("server established connection with %s (%s)\n", 
 	   hostp->h_name, hostaddrp);
     return comm_sock_fd;
   }
