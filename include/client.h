@@ -8,6 +8,7 @@ public:
   client(const char* remote_ip, const uint16_t remote_port);
   ~client();
   void sendfile(const char* fname);
+  void sendstring(const char* str);
 private:
   int socket_fd;
   struct sockaddr_in svaddr; //client address

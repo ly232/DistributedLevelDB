@@ -1,6 +1,6 @@
 //gatetst.cpp
 //gateway server test
-#include "include gateserver.h"
+#include "include/gateserver.h"
 using namespace std;
 int main()
 {
@@ -14,7 +14,7 @@ int main()
   {
     int clfd = gs.accept_conn();
     if (clfd<0) throw SOCKET_ACCEPT_ERROR;
-    gs.requestHandler
+    gs.requestHandler(clfd);
   }
   return 0;
 }

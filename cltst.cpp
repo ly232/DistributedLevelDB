@@ -8,8 +8,9 @@ int main()
   try
   {
     cout<<"client test"<<endl;
-    client clt("192.168.75.154", 8888);
-    clt.sendfile("a.out");
+    client clt("192.168.75.153", 9999);
+    //clt.sendfile("a.out");
+    clt.sendstring("hello world");
   }
   catch(int e)
   {
