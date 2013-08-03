@@ -2,6 +2,9 @@
 //unit test for client
 #include <iostream>
 #include "include/client.h"
+#include <jsoncpp/json.h>
+#include <jsoncpp/reader.h>
+#include <jsoncpp/writer.h>
 using namespace std;
 int main(int argc, char** argv)
 {
@@ -9,9 +12,16 @@ int main(int argc, char** argv)
   try
   {
     cout<<"client test"<<endl;
+    Json::Value root;
+    root["req_type"] = "put";
+    root["req_args"]["key"] = "ly232";
+    root["req_args"]["value"] = "Lin Yang";
+    Json::StyledWriter writer;
+    std::string outputConfig = writer.write(root);
+    std::cout<<"outputConfig="<<outputConfig<<std::endl;
     client clt(argv[1], atoi(argv[2]));
     //clt.sendfile("a.out");
-    clt.sendstring("hello world");
+    clt.sendstring(outputConfig.c_str());
   }
   catch(int e)
   {

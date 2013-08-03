@@ -29,6 +29,7 @@ client::~client()
 void client::sendstring(const char* str)
 {
   ssize_t byte_sent = -1;
+  ssize_t byte_read = -1;
   try
   {
     if (!str) throw FILE_IO_ERROR;
@@ -43,6 +44,9 @@ void client::sendstring(const char* str)
 	  !=cpsz) throw FILE_IO_ERROR;
       p+=cpsz;
     }
+    byte_read = read(socket_fd, buf, BUF_SIZE);
+    if (byte_read==-1) printf("error for wait ack\n");
+    else printf("ack=%s\n",buf);
   }
   catch (int e)
   {
