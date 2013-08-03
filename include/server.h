@@ -19,14 +19,10 @@ public:
 protected:
   int socket_fd;
   struct sockaddr_in svaddr; //server address
-  char buf[BUF_SIZE];
   char hostname[256];
-
-  // disable default and copy constructor 
-  // and operator=:
-  server& operator=(server&){};
-  server(const server&){};
-  server(){};
-
+private:
+  server& operator=(server&);
+  server(const server&);
+  server();
 };
 #endif

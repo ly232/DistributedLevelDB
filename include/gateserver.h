@@ -8,9 +8,11 @@ class gateserver : public server
 public:
   gateserver(const uint16_t port, 
 	     const char* ip = NULL):server(port, ip){};
-  void requestHandler(int clfd);
+  virtual void requestHandler(int clfd);
   virtual ~gateserver(){};
 private:
-
+  static void* send_thread(void*);
+  static void* recv_thread(void*);
+  pthread_mutex_t mutex;
 };
 #endif

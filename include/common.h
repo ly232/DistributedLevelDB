@@ -19,6 +19,8 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <iostream>
+#include <pthread.h>
+#include <vector>
 //constants:
 #define BUF_SIZE 1400
 #define MAX_CONN 5
@@ -33,4 +35,5 @@
 #define SOCKET_CLOSE_ERROR 8;
 #define SOCKET_ACK_ERROR 9;
 #define SOCKET_SEND_ERROR 10;
+#define THREAD_ERROR 11;
 #endif

@@ -1,5 +1,6 @@
 //client.cpp
 #include "include/client.h"
+
 client::client(const char* remote_ip, const uint16_t remote_port)
 {
   try
@@ -25,40 +26,53 @@ client::~client()
     throw SOCKET_CLOSE_ERROR;
 }
 
-//input str must be '\0' terminated
+//multithreaded since it waits for ack
 void client::sendstring(const char* str)
 {
-  ssize_t byte_sent = -1;
-  ssize_t byte_read = -1;
-  try
-  {
-    if (!str) throw FILE_IO_ERROR;
-    size_t rmsz = strlen(str);
-    char* p = const_cast<char*>(str);
-    while (rmsz>0)
-    {
-      size_t cpsz = (rmsz>BUF_SIZE)?BUF_SIZE:rmsz;
-      rmsz -= cpsz;
-      memcpy(buf, p, cpsz);
-      if ((byte_sent = write(socket_fd, buf, cpsz))
-	  !=cpsz) throw FILE_IO_ERROR;
-      p+=cpsz;
-    }
-    byte_read = read(socket_fd, buf, BUF_SIZE);
-    if (byte_read==-1) printf("error for wait ack\n");
-    else printf("ack=%s\n",buf);
-  }
-  catch (int e)
-  {
+  pthread_t send_thread_obj, recv_thread_obj;
+  //hack: to pack str and socket_fd
+  std::vector<void*> thread_arg;
+  thread_arg.push_back((void*)str);
+  thread_arg.push_back((void*)&socket_fd);
+  thread_arg.push_back((void*)&mutex);
 
-  }
+  if (pthread_create(&send_thread_obj, 
+		     0, 
+		     &send_thread, 
+		     (void*)&thread_arg)!=0)
+    throw THREAD_ERROR;
+
+/*
+  //wait for send thread to finish before start recv thread
+  if (pthread_join(send_thread_obj, 0)!=0)
+    throw THREAD_ERROR;
+*/
+
+
+  if (pthread_create(&recv_thread_obj, 
+		     0, 
+		     &recv_thread, 
+		     (void*)&thread_arg)
+      !=0)
+    throw THREAD_ERROR;
+
+
+  //wait for both threads to finish
+  if (pthread_join(send_thread_obj, 0)!=0)
+    throw THREAD_ERROR;
+  if (pthread_join(recv_thread_obj, 0)!=0)
+    throw THREAD_ERROR;
+
 }
 
+//single threaded since it doesn't wait for ack, 
+//so no need for full duplex
 void client::sendfile(const char* fname)
 {
   int fd;
   ssize_t byte_sent = -1;
   ssize_t byte_read = -1;
+  char buf[BUF_SIZE];
   try
   {
     if ((fd=open(fname, O_RDONLY))==-1)
@@ -79,3 +93,52 @@ void client::sendfile(const char* fname)
     throw;
   }
 }
+
+void* client::send_thread(void* arg)
+{
+  ssize_t byte_sent = -1;
+  char buf[BUF_SIZE];
+  std::vector<void*> argvec = *(std::vector<void*>*)arg;
+  char* str = (char*)argvec[0];
+  int sock_fd = *(int*)argvec[1];
+  pthread_mutex_t* mutex_addr = (pthread_mutex_t*)argvec[2];
+  try
+  {
+    if (!str) throw FILE_IO_ERROR;
+    size_t rmsz = strlen(str);
+    char* p = const_cast<char*>(str);
+    while (rmsz>0)
+    {
+      size_t cpsz = (rmsz>BUF_SIZE)?BUF_SIZE:rmsz;
+      rmsz -= cpsz;
+      memcpy(buf, p, cpsz);
+      pthread_mutex_lock(mutex_addr);
+      if ((byte_sent = write(sock_fd, buf, cpsz))
+	  !=cpsz) throw FILE_IO_ERROR;
+      pthread_mutex_unlock(mutex_addr);
+      p+=cpsz;
+    }
+  }
+  catch (int e)
+  {
+    throw;
+  }
+  return 0;
+}
+
+void* client::recv_thread(void* arg)
+{
+printf("inside client recv thread\n");
+  char buf[BUF_SIZE];
+  std::vector<void*> argvec = *(std::vector<void*>*)arg;
+  int sock_fd = *(int*)argvec[1];
+  pthread_mutex_t* mutex_addr = (pthread_mutex_t*)argvec[2];
+  pthread_mutex_lock(mutex_addr);
+  ssize_t byte_read = read(sock_fd, buf, BUF_SIZE);
+  pthread_mutex_unlock(mutex_addr);
+  if (byte_read==-1) printf("error for wait ack\n");
+  else printf("ack=%s\n",buf);
+  return 0;
+}
+
+

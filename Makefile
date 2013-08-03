@@ -1,7 +1,7 @@
 FLAGS += -I. -I./include -I${HOME}/levdb/include
-LIBS += -lleveldb -ljson_linux-gcc-4.6_libmt
+LIBS += -lleveldb -ljson_linux-gcc-4.6_libmt -lpthread
 
-all: s.out c.out a.out g.out
+all: c.out g.out
 
 s.out: fstst.cpp fileserver.cpp server.cpp
 	g++ $(FLAGS) -o s.out fstst.cpp fileserver.cpp server.cpp $(LIBS)

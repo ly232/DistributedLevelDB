@@ -12,6 +12,10 @@ public:
 private:
   int socket_fd;
   struct sockaddr_in svaddr; //client address
-  char buf[BUF_SIZE];
+
+  //thread initialization routines
+  static void* send_thread(void* arg);
+  static void* recv_thread(void* arg);
+  pthread_mutex_t mutex;
 };
 #endif

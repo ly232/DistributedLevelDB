@@ -112,8 +112,11 @@ int server::accept_conn()
 	//throw SOCKET_ACCEPT_ERROR;
       }
     }
-    if(knownclient) printf("server established connection with %s (%s)\n", 
+    if(knownclient)
+    {
+      printf("server established connection with %s (%s)\n", 
 	   hostp->h_name, hostaddrp);
+    }
     return comm_sock_fd;
   }
   catch(int e)
