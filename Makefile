@@ -9,6 +9,9 @@ s.out: fstst.cpp fileserver.cpp server.cpp
 c.out: cltst.cpp client.cpp
 	g++ $(FLAGS) -o c.out cltst.cpp client.cpp $(LIBS)
 
+sc.out : simple_client.cpp client.cpp
+	g++ -I. -I./include -o sc.out simple_client.cpp client.cpp
+
 a.out: hello.cpp
 	g++ $(FLAGS) hello.cpp $(LIBS)
 
