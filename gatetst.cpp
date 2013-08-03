@@ -18,7 +18,7 @@ try{
     gs.requestHandler(clfd);
   }
 } catch (int e) {
-  std::cout<<"e="<<e<<std::endl;
+  std::cerr<<"e="<<e<<std::endl;
 }
   
   return 0;

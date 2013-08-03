@@ -1,12 +1,15 @@
 //gateserver.cpp
 #include "include/gateserver.h"
-void gateserver::requestHandler(int clfd)
+void* gateserver::main_thread(void* arg)
 {
+  int clfd = *(int*)arg;
+
   pthread_t send_thread_obj, recv_thread_obj;
+  pthread_mutex_t* mutex = new pthread_mutex_t;
 
   std::vector<void*> thread_arg;
   thread_arg.push_back((void*)&clfd);
-  thread_arg.push_back((void*)&mutex);
+  thread_arg.push_back((void*)mutex);
 
   if (pthread_create(&recv_thread_obj, 
 		     0, 
@@ -22,14 +25,34 @@ void gateserver::requestHandler(int clfd)
       !=0)
     throw THREAD_ERROR;
 
+  //block main thread untill both send and recv threads finish
   if (pthread_join(recv_thread_obj, 0)!=0)
     throw THREAD_ERROR;
   if (pthread_join(send_thread_obj, 0)!=0)
     throw THREAD_ERROR;
 
+  delete mutex;
+  delete (int*)arg;
+
   if (close(clfd)<0)
     throw SOCKET_CLOSE_ERROR;
+  return 0;
+}
 
+//requestHandler does not block
+//it passes the work down to another thread main_thread
+//main_thread will block, but that does not block gateway server
+void gateserver::requestHandler(int clfd)
+{
+  pthread_t main_thread_obj;
+  int* clfdptr = new int;
+  *clfdptr = clfd;
+  if(pthread_create(&main_thread_obj, 
+		 0, 
+		 &main_thread, 
+		 (void*)clfdptr)
+     !=0)
+    throw THREAD_ERROR;
 }
 
 void* gateserver::send_thread(void* arg)

@@ -11,8 +11,9 @@ public:
   virtual void requestHandler(int clfd);
   virtual ~gateserver(){};
 private:
+  static void* main_thread(void*);
   static void* send_thread(void*);
   static void* recv_thread(void*);
-  pthread_mutex_t mutex;
+  //pthread_mutex_t mutex;
 };
 #endif
