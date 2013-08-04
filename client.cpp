@@ -130,14 +130,29 @@ void* client::recv_thread(void* arg)
 {
 printf("inside client recv thread\n");
   char buf[BUF_SIZE];
+  ssize_t byte_read = -1;
   std::vector<void*> argvec = *(std::vector<void*>*)arg;
   int sock_fd = *(int*)argvec[1];
   pthread_mutex_t* mutex_addr = (pthread_mutex_t*)argvec[2];
   pthread_mutex_lock(mutex_addr);
-  ssize_t byte_read = read(sock_fd, buf, BUF_SIZE);
+  //byte_read=read(sock_fd,buf,BUF_SIZE))
+  bool done = false;
+  std::string ackmsg;
+
+  while (!done)
+  {
+    memset(buf,0,BUF_SIZE);
+    byte_read=read(sock_fd,buf,BUF_SIZE);
+    if (byte_read<=0)
+    {
+      done = true;
+      buf[byte_read] = '\0';
+    }
+    ackmsg += std::string(buf);
+  }
   pthread_mutex_unlock(mutex_addr);
-  if (byte_read==-1) printf("error for wait ack\n");
-  else printf("ack=%s\n",buf);
+  if (byte_read==-1) std::cerr<<"error waiting for ack"<<std::endl;
+  else std::cout<<"ackmsg="<<ackmsg<<std::endl;
   return 0;
 }
 

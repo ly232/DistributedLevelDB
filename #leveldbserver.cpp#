@@ -16,6 +16,7 @@ void leveldbserver::requestHandler(int clfd)
 
 void* main_thread(void*)
 {
+  int clfd = *(int*)arg;
   
   return 0;
 }

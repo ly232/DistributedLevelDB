@@ -3,7 +3,6 @@
 #define _leveldb_h
 #include "common.h"
 #include "server.h"
-#include <leveldb/db.h>
 class leveldbserver : public server
 {
 public:
