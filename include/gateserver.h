@@ -3,6 +3,7 @@
 #define _gateserver_h
 #include "common.h"
 #include "server.h"
+//#include "syncobj.h"
 class gateserver : public server
 {
 public:
@@ -14,6 +15,6 @@ private:
   static void* main_thread(void*);
   static void* send_thread(void*);
   static void* recv_thread(void*);
-  //pthread_mutex_t mutex;
 };
+
 #endif

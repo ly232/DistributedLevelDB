@@ -1,38 +1,60 @@
 //gateserver.cpp
 #include "include/gateserver.h"
+#include "include/syncobj.h"
+
 void* gateserver::main_thread(void* arg)
 {
+  /*
+   * main thread handles a client request by 3 phases:
+   * 1) spawn a recv_thread to read the entire json request
+   * 2) identify a leveldb server and send request to that server
+   * 3) wait for leveldb server's response,
+   *    then pass that response to client
+   */
+
   int clfd = *(int*)arg;
 
-  pthread_t send_thread_obj, recv_thread_obj;
-  pthread_mutex_t* mutex = new pthread_mutex_t;
+  std::string* ackmsg = new std::string;
+  *ackmsg = "ack from gateway";
+  std::string* leveldbrsp = new std::string; 
+               //recv thread will fill in leveldbrsp
+
+  //gateserver::syncobj* so = new gateserver::syncobj;
+  syncobj* so = new syncobj(2L, 2L, 1L);
 
   std::vector<void*> thread_arg;
   thread_arg.push_back((void*)&clfd);
-  thread_arg.push_back((void*)mutex);
+  thread_arg.push_back((void*)so);
+  thread_arg.push_back((void*)ackmsg);
+  thread_arg.push_back((void*)leveldbrsp);
 
-  if (pthread_create(&recv_thread_obj, 
+  //for recv thread:
+  if (pthread_create(&so->_thread_obj_arr[0], 
 		     0, 
 		     &recv_thread, 
 		     (void*)&thread_arg)
       !=0)
     throw THREAD_ERROR;
 
-  if (pthread_create(&send_thread_obj, 
+  if (pthread_join(so->_thread_obj_arr[0], 0)!=0)
+    throw THREAD_ERROR;
+
+  //for send thread:
+  if (pthread_create(&so->_thread_obj_arr[1], 
 		     0, 
 		     &send_thread, 
 		     (void*)&thread_arg)
       !=0)
     throw THREAD_ERROR;
 
-  //block main thread untill both send and recv threads finish
-  if (pthread_join(recv_thread_obj, 0)!=0)
-    throw THREAD_ERROR;
-  if (pthread_join(send_thread_obj, 0)!=0)
+
+  if (pthread_join(so->_thread_obj_arr[1], 0)!=0)
     throw THREAD_ERROR;
 
-  delete mutex;
+  //delete socket_mutex;
   delete (int*)arg;
+  delete ackmsg;
+  delete so;
 
   if (close(clfd)<0)
     throw SOCKET_CLOSE_ERROR;
@@ -59,17 +81,18 @@ void* gateserver::send_thread(void* arg)
 {
   std::vector<void*> argv = *(std::vector<void*>*)arg;
   int clfd = *(int*)argv[0];
-  pthread_mutex_t* mutex_addr = (pthread_mutex_t*)argv[1];
-  char resp[] = "ack from gate server";
+  pthread_mutex_t socket_mutex
+    = ((syncobj*)argv[1])->_mutex_arr[0];
+  std::string resp_str = (*(std::string*)argv[2]);
+  const char* resp = resp_str.c_str();
   size_t resp_len = strlen(resp)+1;
   int tmp;
-  pthread_mutex_lock(mutex_addr);
+  pthread_mutex_lock(&socket_mutex);
   if ((tmp=write(clfd, resp, resp_len))!=resp_len)
   {
-    printf("resp_len=%ld, write_ret=%d\n",resp_len, tmp);
     throw FILE_IO_ERROR;
   }
-  pthread_mutex_unlock(mutex_addr);
+  pthread_mutex_unlock(&socket_mutex);
   return 0;
 }
 
@@ -77,7 +100,8 @@ void* gateserver::recv_thread(void* arg)
 {
   std::vector<void*> argv = *(std::vector<void*>*)arg;
   int clfd = *(int*)argv[0];
-  pthread_mutex_t* mutex_addr = (pthread_mutex_t*)argv[1];
+  pthread_mutex_t socket_mutex 
+    = ((syncobj*)argv[1])->_mutex_arr[0];
   int byte_received = -1;
   std::string request;
   char buf[BUF_SIZE];
@@ -85,9 +109,9 @@ void* gateserver::recv_thread(void* arg)
   while (!done)
   {
     memset(buf, 0, BUF_SIZE);
-    pthread_mutex_lock(mutex_addr);
+    pthread_mutex_lock(&socket_mutex);
     byte_received=read(clfd, buf, BUF_SIZE);
-    pthread_mutex_unlock(mutex_addr);
+    pthread_mutex_unlock(&socket_mutex);
     if (byte_received < BUF_SIZE)
     {
       buf[byte_received] = '\0';
