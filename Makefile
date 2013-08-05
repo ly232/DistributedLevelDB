@@ -39,4 +39,4 @@ server.o: server.cpp
 	$(CC) $(FLAGS) -c server.cpp
 
 clean:
-	rm -rf *.out *.o *.stackdump *~ ./include/*~
+	rm -rf *.out *.o *.stackdump *~ *# ./include/*~ ./include/*#
