@@ -29,6 +29,20 @@ int main(int argc, char** argv)
     std::cout<<"reply="<<reply<<std::endl;
 
     root.clear();
+    root["req_type"] = "delete";
+    root["req_args"]["key"] = "ly232";
+    outputConfig = writer.write(root);
+    reply = clt.sendstring(outputConfig.c_str());
+    std::cout<<"reply="<<reply<<std::endl;
+
+    root.clear();
+    root["req_type"] = "get";
+    root["req_args"]["key"] = "ly232";
+    outputConfig = writer.write(root);
+    reply = clt.sendstring(outputConfig.c_str());
+    std::cout<<"reply="<<reply<<std::endl;
+
+    root.clear();
     root["req_type"] = "exit"; 
     outputConfig = writer.write(root);
     reply = clt.sendstring(outputConfig.c_str());
