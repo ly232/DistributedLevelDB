@@ -4,7 +4,11 @@
 //requestHandler()
 #ifndef _server_h
 #define _server_h
+
+#ifndef _common_h
 #include "common.h"
+#endif
+
 class server
 {
 public:

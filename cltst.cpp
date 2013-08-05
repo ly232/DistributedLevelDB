@@ -21,14 +21,19 @@ int main(int argc, char** argv)
     std::string reply = clt.sendstring(outputConfig.c_str());
     std::cout<<"reply="<<reply<<std::endl;
 
+    root.clear();
+    root["req_type"] = "get";
+    root["req_args"]["key"] = "ly232";
+    outputConfig = writer.write(root);
     reply = clt.sendstring(outputConfig.c_str());
     std::cout<<"reply="<<reply<<std::endl;
 
     root.clear();
     root["req_type"] = "exit"; 
-      //tell gateserver and leveldb server to close this client's socket
     outputConfig = writer.write(root);
     reply = clt.sendstring(outputConfig.c_str());
+    std::cout<<"reply="<<reply<<std::endl;
+
   }
   catch(int e)
   {

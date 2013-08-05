@@ -1,8 +1,15 @@
 //fileserver.h
 #ifndef _fileserver_h
 #define _fileserver_h
+
+#include _common_h
 #include "common.h"
+#include _common_h
+
+#include _server_h
 #include "server.h"
+#include _server_h
+
 class fileserver:public server
 {
 public:

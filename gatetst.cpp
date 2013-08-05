@@ -16,8 +16,6 @@ try{
     int clfd = gs.accept_conn();
     if (clfd<0) throw SOCKET_ACCEPT_ERROR;
     gs.requestHandler(clfd);
-    fsync(clfd);
-    //close(clfd);
   }
 } catch (int e) {
   std::cerr<<"e="<<e<<std::endl;

@@ -1,8 +1,15 @@
 //gateserver.h
 #ifndef _gateserver_h
 #define _gateserver_h
+
+#ifndef _common_h
 #include "common.h"
+#endif
+
+#ifndef _server_h
 #include "server.h"
+#endif
+
 class gateserver : public server
 {
 public:

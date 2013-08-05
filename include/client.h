@@ -1,7 +1,11 @@
 //client.h
 #ifndef _client_h
 #define _client_h
+
+#ifndef _common_h
 #include "common.h"
+#endif
+
 class client
 {
 public:

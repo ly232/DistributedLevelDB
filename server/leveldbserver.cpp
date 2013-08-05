@@ -1,7 +1,6 @@
 //leveldbserver.cpp
 #include "include/leveldbserver.h"
 #include "include/syncobj.h"
-#include <leveldb/db.h>
 #include <algorithm>
 
 leveldbserver::leveldbserver(const uint16_t port, 
@@ -36,7 +35,6 @@ void* leveldbserver::main_thread(void* arg)
   //we do not maintain tcp conn as in a distributed setting the next fetch
   //may or may not request to on the same node.
   //as an enhancement in the future, we may explore when to keep conn.
-    std::cout<<"main thread ready"<<std::endl;
 
     syncobj* so = new syncobj(2L, 2L, 1L);
     std::string* ackmsg = new std::string;
@@ -97,7 +95,6 @@ void leveldbserver::requestHandler(int clfd)
 
 void* leveldbserver::send_thread(void* arg)
 {
-printf("in send thread\n");
   std::vector<void*>& argv = *(std::vector<void*>*)arg;
   int clfd = *(int*)argv[0];
   pthread_mutex_t& socket_mutex
@@ -127,7 +124,6 @@ printf("in send thread\n");
 //this thread interacts with leveldb layer
 void* leveldbserver::recv_thread(void* arg)
 {
-printf("in recv thread\n");
 
   std::vector<void*>& argv = *(std::vector<void*>*)arg;
   int clfd = *(int*)argv[0];
@@ -194,8 +190,8 @@ void leveldbserver::process_leveldb_request(std::string& request,
 		 ::tolower);
   if (req_type=="put")
   {
-    std::string key = root["key"].asString();
-    std::string value = root["value"].asString();
+    std::string key = root["req_args"]["key"].asString();
+    std::string value = root["req_args"]["value"].asString();
     ldbsvr->status = 
       ldbsvr->db->Put(leveldb::WriteOptions(),key,value);
     root.clear();
@@ -203,7 +199,7 @@ void leveldbserver::process_leveldb_request(std::string& request,
   }
   else if (req_type=="get")
   {
-    std::string key = root["key"].asString();
+    std::string key = root["req_args"]["key"].asString();
     std::string value;
     ldbsvr->status = 
       ldbsvr->db->Get(leveldb::ReadOptions(),key,&value);
@@ -212,7 +208,7 @@ void leveldbserver::process_leveldb_request(std::string& request,
   }
   else if (req_type=="delete")
   {
-    std::string key = root["key"].asString();
+    std::string key = root["req_args"]["key"].asString();
     ldbsvr->status = 
       ldbsvr->db->Delete(leveldb::WriteOptions(),key);
     root.clear();

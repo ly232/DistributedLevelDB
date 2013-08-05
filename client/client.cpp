@@ -138,7 +138,6 @@ void* client::send_thread(void* arg)
 
 void* client::recv_thread(void* arg)
 {
-printf("inside client recv thread\n");
   char buf[BUF_SIZE];
   ssize_t byte_read = -1;
   std::vector<void*> argvec = *(std::vector<void*>*)arg;
