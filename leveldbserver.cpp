@@ -3,6 +3,25 @@
 #include "include/syncobj.h"
 #include <leveldb/db.h>
 
+leveldbserver::leveldbserver(const uint16_t port, 
+			     const char ip[],
+			     std::string dbdir)
+ :server(port, ip)
+{
+  options.create_if_missing = true;
+  status = leveldb::DB::Open(options, dbdir, &db);
+  if (!status.ok())
+  {
+    std::cerr<<"error: leveldb open fail"<<std::endl;
+    throw DB_FAIL;
+  }
+}
+
+leveldbserver::~leveldbserver()
+{
+  delete db;
+}
+
 void* leveldbserver::main_thread(void* arg)
 {
   int clfd = *(int*)arg;

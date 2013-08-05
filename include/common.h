@@ -36,4 +36,5 @@
 #define SOCKET_ACK_ERROR 9;
 #define SOCKET_SEND_ERROR 10;
 #define THREAD_ERROR 11;
+#define DB_FAIL 12;
 #endif
