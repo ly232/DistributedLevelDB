@@ -1,12 +1,13 @@
 //leveldbtst.cpp
 //leveldb server test
-#include <include/leveldb/db.h>
+#include <leveldb/db.h>
+#include "include/leveldbserver.h"
 using namespace std;
 int main()
 {
 try
 {
-  levelserver ls(8888);
+  leveldbserver ls(8888);
   cout<<"leveldb server test"<<endl;
   cout<<"hostname: "<<ls.getsvrname()<<endl;
   cout<<"ip: "<<ls.getip()<<endl;

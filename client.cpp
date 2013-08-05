@@ -69,6 +69,8 @@ std::string client::sendstring(const char* str)
 
   delete so;
 
+std::cout<<"client recevied ackmsg="<<ackmsg<<std::endl;
+
   return ackmsg;
 
 }

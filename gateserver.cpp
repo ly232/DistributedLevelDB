@@ -51,6 +51,9 @@ void* gateserver::main_thread(void* arg)
   delete (int*)arg;
   delete ackmsg;
   delete so;
+  delete leveldbrsp;
+
+  //fsync(clfd);
 
   if (close(clfd)<0)
     throw SOCKET_CLOSE_ERROR;
@@ -63,7 +66,7 @@ void* gateserver::main_thread(void* arg)
 void gateserver::requestHandler(int clfd)
 {
   pthread_t main_thread_obj;
-  int* clfdptr = new int;
+  int* clfdptr = new int; //will be deleted by main thread
   *clfdptr = clfd;
   if(pthread_create(&main_thread_obj, 
 		 0, 
@@ -83,7 +86,6 @@ void* gateserver::send_thread(void* arg)
     = ((syncobj*)argv[1])->_mutex_arr[1];
   pthread_cond_t& cv = ((syncobj*)argv[1])->_cv_arr[0];
   std::string& resp_str = (*(std::string*)argv[2]);
-  int tmp;
 
   //wait until recv thread finishes reception 
   //and get a response from leveldb server
@@ -97,7 +99,7 @@ void* gateserver::send_thread(void* arg)
   if (pthread_mutex_unlock(&cv_mutex)!=0) throw THREAD_ERROR;
 
   if (pthread_mutex_lock(&socket_mutex)!=0) throw THREAD_ERROR;
-  if ((tmp=write(clfd,resp,resp_len))!=resp_len) throw FILE_IO_ERROR;
+  if (write(clfd,resp,resp_len)!=resp_len) throw FILE_IO_ERROR;
   if (pthread_mutex_unlock(&socket_mutex)!=0) throw THREAD_ERROR;
   return 0;
 }
@@ -132,10 +134,12 @@ void* gateserver::recv_thread(void* arg)
 
   // pick a leveldb server to forward request
   // now gateserver acts as client to leveldbserver
-  char ldbsvrip[INET_ADDRSTRLEN] = "192.168.75.164";
+  char ldbsvrip[INET_ADDRSTRLEN] = "192.168.75.164"; //TODO: hard coded
   const uint16_t ldbsvrport = 8888;
   client clt(ldbsvrip, ldbsvrport);
   std::string ldback = clt.sendstring(request.c_str());
+
+std::cout<<"ldback="<<ldback<<std::endl;
 
   if (pthread_mutex_lock(&cv_mutex)!=0) throw THREAD_ERROR;
   *ackmsg = "REPLY FROM LEVELDB SERVER VIA GATEWAY: "+ldback;

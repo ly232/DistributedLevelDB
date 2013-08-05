@@ -3,7 +3,7 @@ FLAGS += -I. -I./include
 SLIBS += -lleveldb -ljson_linux-gcc-4.6_libmt -lpthread
 CLIBS += -ljson_linux-gcc-4.6_libmt -lpthread
 
-all: c.out g.out
+all: c.out g.out l.out
 
 s.out: fstst.cpp fileserver.cpp server.cpp
 	$(CC) $(FLAGS) -o s.out fstst.cpp fileserver.cpp server.cpp $(SLIBS)
@@ -23,11 +23,17 @@ a.out: hello.cpp
 g.out:  gatetst.cpp syncobj.o gateserver.o server.o client.o
 	$(CC) $(FLAGS) -o g.out gatetst.cpp gateserver.o server.o client.o syncobj.o -lpthread -ljson_linux-gcc-4.6_libmt
 
+l.out: leveldbtst.cpp syncobj.o leveldbserver.o server.o
+	$(CC) $(FLAGS) -o l.out leveldbtst.cpp syncobj.o leveldbserver.o server.o -lpthread -ljson_linux-gcc-4.6_libmt -lleveldb
+
 syncobj.o: syncobj.cpp
 	$(CC) $(FLAGS) -c syncobj.cpp
 
 gateserver.o: gateserver.cpp
 	$(CC) $(FLAGS) -c gateserver.cpp
+
+leveldbserver.o: leveldbserver.cpp
+	$(CC) $(FLAGS) -c leveldbserver.cpp
 
 server.o: server.cpp
 	$(CC) $(FLAGS) -c server.cpp
