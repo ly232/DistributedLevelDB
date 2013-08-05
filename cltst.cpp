@@ -3,8 +3,6 @@
 #include <iostream>
 #include "include/client.h"
 #include <jsoncpp/json.h>
-#include <jsoncpp/reader.h>
-#include <jsoncpp/writer.h>
 using namespace std;
 int main(int argc, char** argv)
 {

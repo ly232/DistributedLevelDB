@@ -1,6 +1,5 @@
 //leveldbtst.cpp
 //leveldb server test
-#include <leveldb/db.h>
 #include "include/leveldbserver.h"
 using namespace std;
 int main()
