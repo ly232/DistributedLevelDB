@@ -2,6 +2,7 @@
 #include "include/gateserver.h"
 #include "include/syncobj.h"
 #include "include/client.h"
+#include <jsoncpp/json.h>
 
 void* gateserver::main_thread(void* arg)
 {
@@ -15,45 +16,48 @@ void* gateserver::main_thread(void* arg)
 
   int clfd = *(int*)arg;
 
-  std::string* ackmsg = new std::string;
-  std::string* leveldbrsp = new std::string; 
-               //recv thread will fill in leveldbrsp
+  volatile bool* client_exit = new bool;
+  *client_exit = false;
 
-  syncobj* so = new syncobj(2L, 2L, 1L);
+  while (!(*client_exit))
+  {
+    std::string* ackmsg = new std::string;
 
-  std::vector<void*> thread_arg;
-  thread_arg.push_back((void*)&clfd);
-  thread_arg.push_back((void*)so);
-  thread_arg.push_back((void*)ackmsg);
-  thread_arg.push_back((void*)leveldbrsp);
+    //recv thread will fill in leveldbrsp
+    syncobj* so = new syncobj(2L, 2L, 1L);
 
-  //for recv thread:
-  if (pthread_create(&so->_thread_obj_arr[0], 
-		     0, 
-		     &recv_thread, 
-		     (void*)&thread_arg)
-      !=0)
-    throw THREAD_ERROR;
+    std::vector<void*> thread_arg;
+    thread_arg.push_back((void*)&clfd);
+    thread_arg.push_back((void*)so);
+    thread_arg.push_back((void*)ackmsg);
+    //thread_arg.push_back((void*)leveldbrsp);
+    thread_arg.push_back((void*)client_exit);
 
-  //for send thread:
-  if (pthread_create(&so->_thread_obj_arr[1], 
-		     0, 
-		     &send_thread, 
-		     (void*)&thread_arg)
-      !=0)
-    throw THREAD_ERROR;
+    //for recv thread:
+    if (pthread_create(&so->_thread_obj_arr[0], 
+		       0, 
+		       &recv_thread, 
+		       (void*)&thread_arg)
+	!=0)
+      throw THREAD_ERROR;
+    //for send thread:
+    if (pthread_create(&so->_thread_obj_arr[1], 
+		       0, 
+		       &send_thread, 
+		       (void*)&thread_arg)
+	!=0)
+      throw THREAD_ERROR;
 
-  if (pthread_join(so->_thread_obj_arr[0], 0)!=0) //recv thread
-    throw THREAD_ERROR;
-  if (pthread_join(so->_thread_obj_arr[1], 0)!=0) //send thread
-    throw THREAD_ERROR;
+    if (pthread_join(so->_thread_obj_arr[0], 0)!=0) //recv thread
+      throw THREAD_ERROR;
+    if (pthread_join(so->_thread_obj_arr[1], 0)!=0) //send thread
+      throw THREAD_ERROR;
+    delete ackmsg;
+    delete so;
+  }
 
   delete (int*)arg;
-  delete ackmsg;
-  delete so;
-  delete leveldbrsp;
-
-  //fsync(clfd);
+  delete client_exit;
 
   if (close(clfd)<0)
     throw SOCKET_CLOSE_ERROR;
@@ -101,6 +105,7 @@ void* gateserver::send_thread(void* arg)
   if (pthread_mutex_lock(&socket_mutex)!=0) throw THREAD_ERROR;
   if (write(clfd,resp,resp_len)!=resp_len) throw FILE_IO_ERROR;
   if (pthread_mutex_unlock(&socket_mutex)!=0) throw THREAD_ERROR;
+
   return 0;
 }
 
@@ -114,9 +119,12 @@ void* gateserver::recv_thread(void* arg)
   std::string request;
   char buf[BUF_SIZE];
   bool done = false;
+  //cv between send and recv threads:
   pthread_cond_t& cv = ((syncobj*)argv[1])->_cv_arr[0];
   pthread_mutex_t& cv_mutex = ((syncobj*)argv[1])->_mutex_arr[1];
-  std::string* ackmsg  = (std::string*)argv[2];
+  std::string* ackmsg = (std::string*)argv[2];
+  bool* client_exit = (bool*)argv[3];
+
   while (!done)
   {
     memset(buf, 0, BUF_SIZE);
@@ -128,6 +136,8 @@ void* gateserver::recv_thread(void* arg)
       buf[byte_received] = '\0';
       done = true;
     }
+    else if(buf[byte_received-1]=='\0')
+      done = true;
     request = request + std::string(buf);
   }
   std::cout<<"request="<<request<<std::endl;
@@ -139,11 +149,24 @@ void* gateserver::recv_thread(void* arg)
   client clt(ldbsvrip, ldbsvrport);
   std::string ldback = clt.sendstring(request.c_str());
 
-std::cout<<"ldback="<<ldback<<std::endl;
+  //if client requests exit, 
+  //set client_exit flag so that 
+  //main thread can close socket accordingly
+  Json::Value root;
+  Json::Reader reader;
+  reader.parse(request,root);
+  std::string req_type = root["req_type"].asString();
+  if (req_type=="exit")
+  {
+    pthread_mutex_lock(&socket_mutex);
+    *client_exit = true;
+    pthread_mutex_unlock(&socket_mutex);
+  }
 
   if (pthread_mutex_lock(&cv_mutex)!=0) throw THREAD_ERROR;
-  *ackmsg = "REPLY FROM LEVELDB SERVER VIA GATEWAY: "+ldback;
+  *ackmsg = ldback;//"REPLY FROM LEVELDB SERVER VIA GATEWAY: "+ldback;
   if (pthread_mutex_unlock(&cv_mutex)!=0) throw THREAD_ERROR;
   if (pthread_cond_signal(&cv)!=0) throw THREAD_ERROR;
+
   return 0;
 }

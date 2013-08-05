@@ -69,8 +69,6 @@ std::string client::sendstring(const char* str)
 
   delete so;
 
-std::cout<<"client recevied ackmsg="<<ackmsg<<std::endl;
-
   return ackmsg;
 
 }
@@ -148,7 +146,6 @@ printf("inside client recv thread\n");
   pthread_mutex_t& sock_mutex = ((syncobj*)argvec[2])->_mutex_arr[0];
 
   pthread_mutex_lock(&sock_mutex);
-  //byte_read=read(sock_fd,buf,BUF_SIZE))
   bool done = false;
   std::string& ackmsg = *(std::string*)argvec[3];
 
@@ -161,6 +158,8 @@ printf("inside client recv thread\n");
       done = true;
       buf[byte_read] = '\0';
     }
+    else if (buf[byte_read-1]=='\0')
+      done = true;
     ackmsg += std::string(buf);
   }
   pthread_mutex_unlock(&sock_mutex);

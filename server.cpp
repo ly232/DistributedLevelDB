@@ -14,8 +14,10 @@ server::server(const uint16_t port, const char* ip)
      * Eliminates "ERROR on binding: Address already in use" error. 
      */
     int optval = 1;
+    
     setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, 
 	     (const void *)&optval , sizeof(int));
+	     
 
     memset(hostname, 0, 256);
     gethostname(hostname, 256);

@@ -27,7 +27,8 @@ public:
   virtual void requestHandler(int clfd);
   virtual ~leveldbserver();
 private:
-  static void process_leveldb_request(std::string& request, 
+  static void process_leveldb_request(std::string& request,
+				      std::string& response,
 				      leveldbserver* handle);
   static void* main_thread(void*);
   static void* send_thread(void*);

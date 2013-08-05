@@ -16,10 +16,19 @@ int main(int argc, char** argv)
     root["req_args"]["value"] = "Lin Yang";
     Json::StyledWriter writer;
     std::string outputConfig = writer.write(root);
-    std::cout<<"outputConfig="<<outputConfig<<std::endl;
+
     client clt(argv[1], atoi(argv[2]));
     std::string reply = clt.sendstring(outputConfig.c_str());
     std::cout<<"reply="<<reply<<std::endl;
+
+    reply = clt.sendstring(outputConfig.c_str());
+    std::cout<<"reply="<<reply<<std::endl;
+
+    root.clear();
+    root["req_type"] = "exit"; 
+      //tell gateserver and leveldb server to close this client's socket
+    outputConfig = writer.write(root);
+    reply = clt.sendstring(outputConfig.c_str());
   }
   catch(int e)
   {
