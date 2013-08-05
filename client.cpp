@@ -1,5 +1,6 @@
 //client.cpp
 #include "include/client.h"
+#include "include/syncobj.h"
 
 client::client(const char* remote_ip, const uint16_t remote_port)
 {
@@ -12,7 +13,9 @@ client::client(const char* remote_ip, const uint16_t remote_port)
     svaddr.sin_family = AF_INET;
     inet_pton(AF_INET, remote_ip, (void*)&svaddr.sin_addr);
     svaddr.sin_port = htons(remote_port);
-    connect(socket_fd, (struct sockaddr*)&svaddr, sizeof(struct sockaddr));
+    goodconn = (connect(socket_fd, 
+			(struct sockaddr*)&svaddr, 
+			sizeof(struct sockaddr))==0);
   }
   catch(int e)
   {
@@ -27,41 +30,46 @@ client::~client()
 }
 
 //multithreaded since it waits for ack
-void client::sendstring(const char* str)
+std::string client::sendstring(const char* str)
 {
-  pthread_t send_thread_obj, recv_thread_obj;
-  //hack: to pack str and socket_fd
+  if (!goodconn)
+  {
+    std::cerr<<"error: bad connection for client"<<std::endl;
+    return "connection error";
+  }
+
+  syncobj* so = new syncobj(2L, 1L, 0L); //2 threads, 1 mutex, 0 cv
+
+  std::string ackmsg;
+
   std::vector<void*> thread_arg;
   thread_arg.push_back((void*)str);
   thread_arg.push_back((void*)&socket_fd);
-  thread_arg.push_back((void*)&mutex);
+  thread_arg.push_back((void*)so);
+  thread_arg.push_back((void*)&ackmsg);
 
-  if (pthread_create(&send_thread_obj, 
+  if (pthread_create(&(so->_thread_obj_arr[0]), 
 		     0, 
 		     &send_thread, 
 		     (void*)&thread_arg)!=0)
     throw THREAD_ERROR;
 
-/*
-  //wait for send thread to finish before start recv thread
-  if (pthread_join(send_thread_obj, 0)!=0)
+  if (pthread_join(so->_thread_obj_arr[0], 0)!=0)
     throw THREAD_ERROR;
-*/
 
-
-  if (pthread_create(&recv_thread_obj, 
+  if (pthread_create(&(so->_thread_obj_arr[1]), 
 		     0, 
 		     &recv_thread, 
 		     (void*)&thread_arg)
       !=0)
     throw THREAD_ERROR;
 
+  if (pthread_join(so->_thread_obj_arr[1], 0)!=0)
+    throw THREAD_ERROR;
 
-  //wait for both threads to finish
-  if (pthread_join(send_thread_obj, 0)!=0)
-    throw THREAD_ERROR;
-  if (pthread_join(recv_thread_obj, 0)!=0)
-    throw THREAD_ERROR;
+  delete so;
+
+  return ackmsg;
 
 }
 
@@ -101,7 +109,9 @@ void* client::send_thread(void* arg)
   std::vector<void*> argvec = *(std::vector<void*>*)arg;
   char* str = (char*)argvec[0];
   int sock_fd = *(int*)argvec[1];
-  pthread_mutex_t* mutex_addr = (pthread_mutex_t*)argvec[2];
+  pthread_mutex_t& sock_mutex = ((syncobj*)argvec[2])->_mutex_arr[0];
+  //pthread_mutex_t& cv_mutex = ((syncobj*)argvec[2])->_mutex_arr[1];
+  //pthread_cond_t& cv = ((syncobj*)argvec[2])->_cv_arr[0];
   try
   {
     if (!str) throw FILE_IO_ERROR;
@@ -112,10 +122,10 @@ void* client::send_thread(void* arg)
       size_t cpsz = (rmsz>BUF_SIZE)?BUF_SIZE:rmsz;
       rmsz -= cpsz;
       memcpy(buf, p, cpsz);
-      pthread_mutex_lock(mutex_addr);
+      pthread_mutex_lock(&sock_mutex);
       if ((byte_sent = write(sock_fd, buf, cpsz))
 	  !=cpsz) throw FILE_IO_ERROR;
-      pthread_mutex_unlock(mutex_addr);
+      pthread_mutex_unlock(&sock_mutex);
       p+=cpsz;
     }
   }
@@ -133,11 +143,12 @@ printf("inside client recv thread\n");
   ssize_t byte_read = -1;
   std::vector<void*> argvec = *(std::vector<void*>*)arg;
   int sock_fd = *(int*)argvec[1];
-  pthread_mutex_t* mutex_addr = (pthread_mutex_t*)argvec[2];
-  pthread_mutex_lock(mutex_addr);
+  pthread_mutex_t& sock_mutex = ((syncobj*)argvec[2])->_mutex_arr[0];
+
+  pthread_mutex_lock(&sock_mutex);
   //byte_read=read(sock_fd,buf,BUF_SIZE))
   bool done = false;
-  std::string ackmsg;
+  std::string& ackmsg = *(std::string*)argvec[3];
 
   while (!done)
   {
@@ -150,9 +161,9 @@ printf("inside client recv thread\n");
     }
     ackmsg += std::string(buf);
   }
-  pthread_mutex_unlock(mutex_addr);
-  if (byte_read==-1) std::cerr<<"error waiting for ack"<<std::endl;
-  else std::cout<<"ackmsg="<<ackmsg<<std::endl;
+  pthread_mutex_unlock(&sock_mutex);
+  if (byte_read==-1)
+    std::cerr<<"error waiting for ack"<<std::endl;
   return 0;
 }
 

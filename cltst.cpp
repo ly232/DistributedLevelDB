@@ -20,8 +20,8 @@ int main(int argc, char** argv)
     std::string outputConfig = writer.write(root);
     std::cout<<"outputConfig="<<outputConfig<<std::endl;
     client clt(argv[1], atoi(argv[2]));
-    //clt.sendfile("a.out");
-    clt.sendstring(outputConfig.c_str());
+    std::string reply = clt.sendstring(outputConfig.c_str());
+    std::cout<<"reply="<<reply<<std::endl;
   }
   catch(int e)
   {

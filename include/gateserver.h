@@ -3,7 +3,6 @@
 #define _gateserver_h
 #include "common.h"
 #include "server.h"
-//#include "syncobj.h"
 class gateserver : public server
 {
 public:

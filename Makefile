@@ -8,8 +8,11 @@ all: c.out g.out
 s.out: fstst.cpp fileserver.cpp server.cpp
 	$(CC) $(FLAGS) -o s.out fstst.cpp fileserver.cpp server.cpp $(SLIBS)
 
-c.out: cltst.cpp client.cpp
-	$(CC) $(FLAGS) -o c.out cltst.cpp client.cpp $(CLIBS)
+c.out: cltst.cpp client.o syncobj.o
+	$(CC) $(FLAGS) -o c.out cltst.cpp client.o syncobj.o -lpthread -ljson_linux-gcc-4.6_libmt
+
+client.o: client.cpp
+	$(CC) $(FLAGS) -c client.cpp
 
 sc.out : simple_client.cpp client.cpp
 	$(CC) $(FLAGS) -o sc.out simple_client.cpp client.cpp
@@ -17,8 +20,8 @@ sc.out : simple_client.cpp client.cpp
 a.out: hello.cpp
 	$(CC) hello.cpp
 
-g.out:  gatetst.cpp syncobj.o gateserver.o server.o
-	$(CC) $(FLAGS) -o g.out gatetst.cpp gateserver.o server.o syncobj.o -lpthread -ljson_linux-gcc-4.6_libmt
+g.out:  gatetst.cpp syncobj.o gateserver.o server.o client.o
+	$(CC) $(FLAGS) -o g.out gatetst.cpp gateserver.o server.o client.o syncobj.o -lpthread -ljson_linux-gcc-4.6_libmt
 
 syncobj.o: syncobj.cpp
 	$(CC) $(FLAGS) -c syncobj.cpp

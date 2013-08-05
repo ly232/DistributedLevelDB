@@ -1,6 +1,7 @@
 //gateserver.cpp
 #include "include/gateserver.h"
 #include "include/syncobj.h"
+#include "include/client.h"
 
 void* gateserver::main_thread(void* arg)
 {
@@ -89,7 +90,6 @@ void* gateserver::send_thread(void* arg)
   if (pthread_mutex_lock(&cv_mutex)!=0) throw THREAD_ERROR;
   while(resp_str.empty())
   {
-    std::cout<<"send block"<<std::endl;
     pthread_cond_wait(&cv, &cv_mutex);
   }
   const char* resp = resp_str.c_str();
@@ -129,10 +129,17 @@ void* gateserver::recv_thread(void* arg)
     request = request + std::string(buf);
   }
   std::cout<<"request="<<request<<std::endl;
+
+  // pick a leveldb server to forward request
+  // now gateserver acts as client to leveldbserver
+  char ldbsvrip[INET_ADDRSTRLEN] = "192.168.75.164";
+  const uint16_t ldbsvrport = 8888;
+  client clt(ldbsvrip, ldbsvrport);
+  std::string ldback = clt.sendstring(request.c_str());
+
   if (pthread_mutex_lock(&cv_mutex)!=0) throw THREAD_ERROR;
-  *ackmsg = request + "REPLY FROM GATEWAY";
+  *ackmsg = "REPLY FROM LEVELDB SERVER VIA GATEWAY: "+ldback;
   if (pthread_mutex_unlock(&cv_mutex)!=0) throw THREAD_ERROR;
   if (pthread_cond_signal(&cv)!=0) throw THREAD_ERROR;
-  std::cout<<"recv signal"<<std::endl;
   return 0;
 }
