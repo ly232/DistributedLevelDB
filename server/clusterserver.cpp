@@ -5,7 +5,7 @@
 #include <jsoncpp/json.h>
 #include <algorithm>
 
-static size_t hash(std::string s)
+static size_t hash(std::string& s)
 {
   size_t len = s.length();
   size_t val = 0;
@@ -20,7 +20,8 @@ clusterserver::clusterserver(const uint16_t port,
   :server(port, ip),
    ctbl(MAX_CLUSTER)
 {
-  
+  std::cout<<"starting cluster server with ip: "
+	   <<std::string(ip)<<", port: "<<port<<std::endl;
 }
 
 clusterserver::~clusterserver()
@@ -165,6 +166,7 @@ void clusterserver::process_cluster_request(std::string& request,
 					    std::string& response,
 					    clusterserver* cs)
 {
+//std::cout<<"cluster request="<<request<<std::endl;
   Json::Value root;
   Json::Reader reader;
   Json::StyledWriter writer;

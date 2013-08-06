@@ -3,6 +3,7 @@
 #ifndef _common_h
 #define _common_h
 //headers:
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -25,11 +26,13 @@
 //constants:
 #define BUF_SIZE 1400
 #define MAX_CONN 5
-#define MAX_CLUSTER 5 //max number of leveldb server clusters
+#define MAX_CLUSTER 1 //max number of leveldb server clusters
                       //a cluster is a set of leveldb servers
                       //a tuple (k,v) belongs to cluster hash(k) only
                       //note that hash(k) must be 
                       //in range {0...MAX_CLUSTER-1}
+                      //IMPORTANT: there must be at least MAX_CLUSTER
+                      //           number of leveldb servers
 //error code:
 #define SOCKET_CONSTRUCT_ERROR 1;
 #define SOCKET_BIND_ERROR 2;
@@ -43,4 +46,6 @@
 #define SOCKET_SEND_ERROR 10;
 #define THREAD_ERROR 11;
 #define DB_FAIL 12;
+#define CLUSTER_FAIL 13;
+
 #endif

@@ -1,17 +1,18 @@
 //leveldbserver.cpp
 #include "include/leveldbserver.h"
 #include "include/syncobj.h"
+#include "include/client.h"
 #include <algorithm>
 #include <jsoncpp/json.h>
 
-leveldbserver::leveldbserver(//const uint16_t cluster_svr_port,
-			     //const char cluster_svr_ip[],
+leveldbserver::leveldbserver(const uint16_t cluster_svr_port,
 			     const uint16_t port, 
+			     std::string cluster_svr_ip,
 			     const char ip[],
 			     std::string dbdir)
-  :server(port, ip)
-   //cluster_svr_ip(std::string()),
+  :server(port, ip), _cluster_svr_port(cluster_svr_port)
 {
+  _cluster_svr_ip = (cluster_svr_ip=="")?getip():cluster_svr_ip;
   options.create_if_missing = true;
   status = leveldb::DB::Open(options, dbdir, &db);
   if (!status.ok())
@@ -19,10 +20,12 @@ leveldbserver::leveldbserver(//const uint16_t cluster_svr_port,
     std::cerr<<"error: leveldb open fail"<<std::endl;
     throw DB_FAIL;
   }
+  join_cluster();
 }
 
 leveldbserver::~leveldbserver()
 {
+  leave_cluster();
   delete db;
 }
 
@@ -76,6 +79,53 @@ void* leveldbserver::main_thread(void* arg)
   if (close(clfd)<0)
     throw SOCKET_CLOSE_ERROR;
   return 0;
+}
+
+void leveldbserver::join_cluster()
+{
+std::cout<<"calling join_cluster to ip "
+	 <<_cluster_svr_ip<<", port "<<_cluster_svr_port<<std::endl;
+  client clt(_cluster_svr_ip.c_str(), _cluster_svr_port);
+  Json::Value root;
+  Json::StyledWriter writer;
+  Json::Reader reader;
+  root["req_type"] = "join";
+  root["req_args"]["ip"] = getip();
+  root["req_args"]["port"] = getport();
+  std::string request = writer.write(root);
+  std::string response = clt.sendstring(request.c_str());
+  root.clear();
+  if (!reader.parse(response,root))
+  {
+    std::cerr<<
+      "error: leveldbserver::join_cluster parse json response error"
+	     <<std::endl;
+  }
+  if (root["result"]!="ok")
+    std::cerr<<"error: leveldbserver::join_cluster failed"<<std::endl;
+}
+
+void leveldbserver::leave_cluster()
+{
+std::cout<<"calling leave_cluster"<<std::endl;
+  client clt(_cluster_svr_ip.c_str(), _cluster_svr_port);
+  Json::Value root;
+  Json::StyledWriter writer;
+  Json::Reader reader;
+  root["req_type"] = "leave";
+  root["req_args"]["ip"] = getip();
+  root["req_args"]["port"] = getport();
+  std::string request = writer.write(root);
+  std::string response = clt.sendstring(request.c_str());
+  root.clear();
+  if (!reader.parse(response,root))
+  {
+    std::cerr<<
+      "error: leveldbserver::join_cluster parse json response error"
+	     <<std::endl;
+  }
+  if (root["result"]!="ok")
+    std::cerr<<"error: leveldbserver::join_cluster failed"<<std::endl;
 }
 
 void leveldbserver::requestHandler(int clfd)

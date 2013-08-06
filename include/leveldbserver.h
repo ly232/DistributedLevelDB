@@ -17,10 +17,10 @@
 class leveldbserver : public server
 {
 public:
-  leveldbserver(//const uint16_t cluster_svr_port,
-		//const char cluster_svr_ip[],
-		const uint16_t port, 
-		const char ip[] = NULL,
+  leveldbserver(const uint16_t cluster_svr_port,
+		const uint16_t self_port, 
+		std::string cluster_svr_ip = "",
+		const char self_ip[] = NULL,
 		std::string dbdir = "/home/ly232/levdb/db0");
   virtual void requestHandler(int clfd);
   virtual ~leveldbserver();
@@ -34,8 +34,10 @@ private:
   leveldb::DB* db;
   leveldb::Options options;
   leveldb::Status status;
-  std::string cluster_svr_ip;
-  uint16_t cluster_svr_port;
+  std::string _cluster_svr_ip;
+  uint16_t _cluster_svr_port;
+  void join_cluster();
+  void leave_cluster();
 };
 #endif
 

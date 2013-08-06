@@ -17,7 +17,8 @@ public:
   virtual void requestHandler(int clfd);
   virtual ~clusterserver();
   pthread_t* get_thread_obj();
-  
+  std::list<server_address>& 
+    get_server_list(const size_t cluster_id);
 private:
   std::vector<std::list<server_address> > 
     ctbl; //cluster table, maps cluster id to server list
@@ -33,8 +34,6 @@ private:
 
   void register_server(const size_t cluster_id, 
 		       const server_address& svr);
-  std::list<server_address>& 
-    get_server_list(const size_t cluster_id);
 
 };
 

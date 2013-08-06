@@ -31,8 +31,8 @@ private:
 };
 
 //instead of using struct sockaddr_in, we simplify server address
-//with just ip and port, so that it's easier to compute the hash
-//for cluster management
+//with just ip and port, so that it's easier to compute and store 
+//thee hash for cluster management
 struct server_address
 {
   server_address(std::string ip, 
