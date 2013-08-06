@@ -12,8 +12,8 @@ c.out: cltst.cpp client.o syncobj.o
 client.o: client/client.cpp
 	$(CC) $(FLAGS) -c client/client.cpp
 
-g.out:  gatetst.cpp syncobj.o gateserver.o server.o client.o
-	$(CC) $(FLAGS) -o g.out gatetst.cpp gateserver.o server.o client.o syncobj.o -lpthread -ljson_linux-gcc-4.6_libmt
+g.out:  gatetst.cpp syncobj.o gateserver.o server.o client.o clusterserver.o
+	$(CC) $(FLAGS) -o g.out gatetst.cpp gateserver.o server.o client.o syncobj.o clusterserver.o  -lpthread -ljson_linux-gcc-4.6_libmt
 
 l.out: leveldbtst.cpp syncobj.o leveldbserver.o server.o
 	$(CC) $(FLAGS) -o l.out leveldbtst.cpp syncobj.o leveldbserver.o server.o -lpthread -ljson_linux-gcc-4.6_libmt -lleveldb
@@ -23,6 +23,9 @@ syncobj.o: util/syncobj.cpp
 
 gateserver.o: server/gateserver.cpp
 	$(CC) $(FLAGS) -c server/gateserver.cpp
+
+clusterserver.o: server/clusterserver.cpp
+	$(CC) $(FLAGS) -c server/clusterserver.cpp
 
 leveldbserver.o: server/leveldbserver.cpp
 	$(CC) $(FLAGS) -c server/leveldbserver.cpp

@@ -21,9 +21,15 @@
 #include <iostream>
 #include <pthread.h>
 #include <vector>
+#include <list>
 //constants:
 #define BUF_SIZE 1400
 #define MAX_CONN 5
+#define MAX_CLUSTER 5 //max number of leveldb server clusters
+                      //a cluster is a set of leveldb servers
+                      //a tuple (k,v) belongs to cluster hash(k) only
+                      //note that hash(k) must be 
+                      //in range {0...MAX_CLUSTER-1}
 //error code:
 #define SOCKET_CONSTRUCT_ERROR 1;
 #define SOCKET_BIND_ERROR 2;

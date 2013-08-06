@@ -4,6 +4,38 @@
 #include "include/client.h"
 #include <jsoncpp/json.h>
 
+void* gateserver::cluster_server_init(void* arg)
+{
+  gateserver* gs = (gateserver*) arg;
+  while (true)
+  {
+    int clfd = gs->cs->accept_conn();
+    if (clfd<0) throw SOCKET_ACCEPT_ERROR;
+    gs->cs->requestHandler(clfd);
+  }
+}
+
+gateserver::gateserver(const uint16_t gsport, 
+		       const uint16_t csport, 
+		       const char* ip)
+  :server(gsport, ip)
+{
+  //start cluster server to 
+  //monitor leveldb servers join/leave cluster
+  cs = new clusterserver(csport, getip().c_str());
+  if (pthread_create(cs->get_thread_obj(), 
+		     0, 
+		     &cluster_server_init, 
+		     (void*)this)
+      !=0) 
+    throw THREAD_ERROR;
+}
+
+gateserver::~gateserver()
+{
+  delete cs;
+}
+
 void* gateserver::main_thread(void* arg)
 {
   /*
@@ -95,12 +127,10 @@ void* gateserver::send_thread(void* arg)
   //and get a response from leveldb server
   if (pthread_mutex_lock(&cv_mutex)!=0) throw THREAD_ERROR;
   while(resp_str.empty())
-  {
     pthread_cond_wait(&cv, &cv_mutex);
-  }
+  if (pthread_mutex_unlock(&cv_mutex)!=0) throw THREAD_ERROR;
   const char* resp = resp_str.c_str();
   size_t resp_len = strlen(resp)+1;
-  if (pthread_mutex_unlock(&cv_mutex)!=0) throw THREAD_ERROR;
 
   if (pthread_mutex_lock(&socket_mutex)!=0) throw THREAD_ERROR;
   if (write(clfd,resp,resp_len)!=resp_len) throw FILE_IO_ERROR;
@@ -164,7 +194,7 @@ void* gateserver::recv_thread(void* arg)
   }
 
   if (pthread_mutex_lock(&cv_mutex)!=0) throw THREAD_ERROR;
-  *ackmsg = ldback;//"REPLY FROM LEVELDB SERVER VIA GATEWAY: "+ldback;
+  *ackmsg = ldback;
   if (pthread_mutex_unlock(&cv_mutex)!=0) throw THREAD_ERROR;
   if (pthread_cond_signal(&cv)!=0) throw THREAD_ERROR;
 

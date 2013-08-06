@@ -5,7 +5,7 @@ using namespace std;
 int main()
 {
 try{
-  gateserver gs(9999);
+  gateserver gs(9999, 9998); //gate svr port, cluster svr port
   cout<<"gateways server test"<<endl;
   cout<<"hostname: "<<gs.getsvrname()<<endl;
   cout<<"ip: "<<gs.getip()<<endl;

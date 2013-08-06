@@ -10,17 +10,24 @@
 #include "server.h"
 #endif
 
+#ifndef _clusterserver_h
+#include "clusterserver.h"
+#endif
+
 class gateserver : public server
 {
 public:
-  gateserver(const uint16_t port, 
-	     const char* ip = NULL):server(port, ip){};
+  gateserver(const uint16_t gsport, 
+	     const uint16_t csport,
+	     const char* ip = NULL);
   virtual void requestHandler(int clfd);
-  virtual ~gateserver(){};
+  virtual ~gateserver();
 private:
   static void* main_thread(void*);
   static void* send_thread(void*);
   static void* recv_thread(void*);
+  static void* cluster_server_init(void*);
+  clusterserver* cs;
 };
 
 #endif

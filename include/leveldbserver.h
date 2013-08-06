@@ -14,14 +14,12 @@
 #include <leveldb/db.h>
 #endif
 
-#ifndef JSON_JSON_H_INCLUDED
-#include <jsoncpp/json.h>
-#endif
-
 class leveldbserver : public server
 {
 public:
-  leveldbserver(const uint16_t port, 
+  leveldbserver(//const uint16_t cluster_svr_port,
+		//const char cluster_svr_ip[],
+		const uint16_t port, 
 		const char ip[] = NULL,
 		std::string dbdir = "/home/ly232/levdb/db0");
   virtual void requestHandler(int clfd);
@@ -36,6 +34,8 @@ private:
   leveldb::DB* db;
   leveldb::Options options;
   leveldb::Status status;
+  std::string cluster_svr_ip;
+  uint16_t cluster_svr_port;
 };
 #endif
 
