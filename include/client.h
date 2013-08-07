@@ -13,6 +13,7 @@ public:
   ~client();
   void sendfile(const char* fname);
   std::string sendstring(const char* str);
+  void sendstring_noblock(const char* req, std::string& resp);
 private:
   bool goodconn;
   int socket_fd;

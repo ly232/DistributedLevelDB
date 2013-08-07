@@ -237,10 +237,8 @@ void* gateserver::recv_thread(void* arg)
     std::string ldbsvrip = itr->_ip;
     const uint16_t ldbsvrport = itr->_port;
     itr++;
-std::cout<<"ldbip:"<<ldbsvrip<<",ldbsvrport"<<ldbsvrport<<std::endl;
     client clt(ldbsvrip.c_str(), ldbsvrport);
     ldback = clt.sendstring(request.c_str());
-std::cout<<"ldback="<<ldback<<std::endl;
     root.clear();
     if (!reader.parse(ldback,root))
       continue;
@@ -263,7 +261,8 @@ std::cout<<"ldback="<<ldback<<std::endl;
 
   if (pthread_cond_signal(&cv)!=0) throw THREAD_ERROR;
 
-//TODO implement client::sendstring_noblock to have eventual consistency
+//TODO implement client::sendstring_noblock for eventual consistency
 
   return 0;
 }
+

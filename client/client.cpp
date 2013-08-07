@@ -167,4 +167,9 @@ void* client::recv_thread(void* arg)
   return 0;
 }
 
+void client::sendstring_noblock(const char* req, std::string& resp)
+{
+  
+}
+
 
