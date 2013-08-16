@@ -6,6 +6,10 @@
 #include "common.h"
 #endif
 
+#ifndef _syncobj_h
+#include "syncobj.h"
+#endif
+
 class client
 {
 public:
@@ -13,7 +17,9 @@ public:
   ~client();
   void sendfile(const char* fname);
   std::string sendstring(const char* str);
-  void sendstring_noblock(const char* req, std::string& resp);
+  void sendstring_noblock(const char* req, 
+			  syncobj* so, 
+			  int* numdone);
 private:
   bool goodconn;
   int socket_fd;
@@ -21,5 +27,6 @@ private:
   //thread initialization callback routines
   static void* send_thread(void* arg);
   static void* recv_thread(void* arg);
+  static void* main_thread(void* arg); //for async sendstring
 };
 #endif

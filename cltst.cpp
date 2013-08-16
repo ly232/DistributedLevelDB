@@ -6,7 +6,11 @@
 using namespace std;
 int main(int argc, char** argv)
 {
-  if (argc!=3) return 1;
+  if (argc!=3)
+  {
+    printf("usage: c.out <gateway server ip> <gateway server port>");
+    return 1;
+  }
   try
   {
     cout<<"client test"<<endl;

@@ -24,7 +24,7 @@
 #include <vector>
 #include <list>
 //constants:
-#define BUF_SIZE 1400
+#define BUF_SIZE 99999
 #define MAX_CONN 5
 #define MAX_CLUSTER 1 //max number of leveldb server clusters
                       //a cluster is a set of leveldb servers

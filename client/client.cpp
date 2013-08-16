@@ -2,7 +2,8 @@
 #include "include/client.h"
 #include "include/syncobj.h"
 
-client::client(const char* remote_ip, const uint16_t remote_port)
+client::client(const char* remote_ip, 
+	       const uint16_t remote_port)
 {
   try
   {
@@ -38,7 +39,8 @@ std::string client::sendstring(const char* str)
     return "connection error";
   }
 
-  syncobj* so = new syncobj(2L, 1L, 0L); //2 threads, 1 mutex, 0 cv
+  syncobj* so = new syncobj(2L, 1L, 0L); 
+    //2 threads, 1 mutex, 0 cv
 
   std::string ackmsg;
 
@@ -73,6 +75,7 @@ std::string client::sendstring(const char* str)
 
 }
 
+//!!!NOT SUPPORTED YET
 //single threaded since it doesn't wait for ack, 
 //so no need for full duplex
 void client::sendfile(const char* fname)
@@ -110,24 +113,28 @@ void* client::send_thread(void* arg)
   char* str = (char*)argvec[0];
   int sock_fd = *(int*)argvec[1];
   pthread_mutex_t& sock_mutex = ((syncobj*)argvec[2])->_mutex_arr[0];
-  //pthread_mutex_t& cv_mutex = ((syncobj*)argvec[2])->_mutex_arr[1];
-  //pthread_cond_t& cv = ((syncobj*)argvec[2])->_cv_arr[0];
   try
   {
     if (!str) throw FILE_IO_ERROR;
-    size_t rmsz = strlen(str);
+    size_t rmsz = strlen(str) + 1; //include '\0'
     char* p = const_cast<char*>(str);
     while (rmsz>0)
     {
       size_t cpsz = (rmsz>BUF_SIZE)?BUF_SIZE:rmsz;
-      rmsz -= cpsz;
+      memset(buf,0,BUF_SIZE);
       memcpy(buf, p, cpsz);
       pthread_mutex_lock(&sock_mutex);
-      if ((byte_sent = write(sock_fd, buf, cpsz))
-	  !=cpsz) throw FILE_IO_ERROR;
+      byte_sent = write(sock_fd, buf, cpsz);
+      if (byte_sent<0)
+      {
+        printf("client sendstring write faile\n");
+        throw FILE_IO_ERROR;
+      }
       pthread_mutex_unlock(&sock_mutex);
-      p+=cpsz;
+      p += byte_sent;
+      rmsz -= byte_sent;
     }
+
   }
   catch (int e)
   {
@@ -152,12 +159,7 @@ void* client::recv_thread(void* arg)
   {
     memset(buf,0,BUF_SIZE);
     byte_read=read(sock_fd,buf,BUF_SIZE);
-    if (byte_read<=0)
-    {
-      done = true;
-      buf[byte_read] = '\0';
-    }
-    else if (buf[byte_read-1]=='\0')
+    if (buf[byte_read-1]=='\0')
       done = true;
     ackmsg += std::string(buf);
   }
@@ -167,9 +169,40 @@ void* client::recv_thread(void* arg)
   return 0;
 }
 
-void client::sendstring_noblock(const char* req, std::string& resp)
+//async sendstring api
+//the caller must provide a syncobj for callee to notify
+//when a response is received.
+//i.e. caller is blocked until some client responds.
+void client::sendstring_noblock(const char* req, 
+				syncobj* so, 
+				int* numdone)
 {
-  
+  if (!goodconn)
+  {
+    std::cerr
+      <<"error: bad connection for client"
+      <<std::endl;
+    return;
+  }
+  pthread_t main_thread_obj;
+  std::vector<void*>* argv = new std::vector<void*>;
+    //argv will be deleted by main thread
+  argv->push_back((void*)this);
+  argv->push_back((void*)req);
+  argv->push_back((void*)so);
+  argv->push_back((void*)numdone);
+  if(pthread_create(&main_thread_obj, 
+		 0, 
+		 &main_thread, 
+		 (void*)argv)
+     !=0)
+    throw THREAD_ERROR;
+  return;
+  //if (hasResp) return; //some other ldbserver already replied
 }
 
+void* client::main_thread(void* arg)
+{
+
+}
 

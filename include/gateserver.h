@@ -27,7 +27,9 @@ private:
   static void* send_thread(void*);
   static void* recv_thread(void*);
   static void* cluster_server_init(void*);
+  static void* cleanup_thread_handler(void*);
   clusterserver* cs;
+  bool sync_client;
 };
 
 #endif

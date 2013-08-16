@@ -28,7 +28,7 @@ void* gateserver::cluster_server_init(void* arg)
 gateserver::gateserver(const uint16_t gsport, 
 		       const uint16_t csport, 
 		       const char* ip)
-  :server(gsport, ip)
+  :server(gsport, ip),sync_client(true)
 {
   //start cluster server to 
   //monitor leveldb servers join/leave cluster
@@ -148,11 +148,17 @@ void* gateserver::send_thread(void* arg)
   if (pthread_mutex_unlock(&cv_mutex)!=0) throw THREAD_ERROR;
   const char* resp = resp_str.c_str();
   size_t resp_len = strlen(resp)+1;
-
-  if (pthread_mutex_lock(&socket_mutex)!=0) throw THREAD_ERROR;
-  if (write(clfd,resp,resp_len)!=resp_len) throw FILE_IO_ERROR;
-  if (pthread_mutex_unlock(&socket_mutex)!=0) throw THREAD_ERROR;
-
+  size_t rmsz = resp_len;
+  size_t byte_sent = -1;
+  while (rmsz>0)
+  {
+    if (pthread_mutex_lock(&socket_mutex)!=0) throw THREAD_ERROR;
+    byte_sent = write(clfd,resp,rmsz);
+    if (pthread_mutex_unlock(&socket_mutex)!=0) throw THREAD_ERROR;
+    if (byte_sent<0) throw FILE_IO_ERROR;
+    rmsz -= byte_sent;
+    resp += byte_sent;
+  }
   return 0;
 }
 
@@ -179,12 +185,7 @@ void* gateserver::recv_thread(void* arg)
     if (pthread_mutex_lock(&socket_mutex)!=0) throw THREAD_ERROR;
     byte_received=read(clfd, buf, BUF_SIZE);
     if (pthread_mutex_unlock(&socket_mutex)!=0) throw THREAD_ERROR;
-    if (byte_received < BUF_SIZE)
-    {
-      buf[byte_received] = '\0';
-      done = true;
-    }
-    else if(buf[byte_received-1]=='\0')
+    if(buf[byte_received-1]=='\0')
       done = true;
     request = request + std::string(buf);
   }
@@ -231,7 +232,11 @@ void* gateserver::recv_thread(void* arg)
   const size_t cluster_id = hash(key);
   std::list<server_address>& svrlst = 
     gatesvr->cs->get_server_list(cluster_id);
-  std::list<server_address>::iterator itr = svrlst.begin();
+  std::list<server_address>::iterator itr 
+    = svrlst.begin();
+  
+if (gatesvr->sync_client)
+{
   while(itr!=svrlst.end())
   {
     std::string ldbsvrip = itr->_ip;
@@ -250,19 +255,68 @@ void* gateserver::recv_thread(void* arg)
       if (pthread_mutex_unlock(&cv_mutex)!=0) continue;
     }
   }
-  if (!skip) //none of the leveldb servers returned a positive response
+  if (!skip)
   {
-    if (pthread_mutex_lock(&cv_mutex)!=0) throw THREAD_ERROR;
+    if (pthread_mutex_lock(&cv_mutex)!=0) 
+      throw THREAD_ERROR;
     *ackmsg = ldback;
-    if (pthread_mutex_unlock(&cv_mutex)!=0) throw THREAD_ERROR;
+    if (pthread_mutex_unlock(&cv_mutex)!=0) 
+      throw THREAD_ERROR;
     if (pthread_cond_signal(&cv)!=0) throw THREAD_ERROR;
     return 0;
   }
-
   if (pthread_cond_signal(&cv)!=0) throw THREAD_ERROR;
-
-//TODO implement client::sendstring_noblock for eventual consistency
-
+}
+else //async client, i.e. call client::sendstring_noblock
+{
+  int* numdone = new int;
+  *numdone = 0;
+  int* numtotal = new int;
+  *numtotal = svrlst.size();
+  syncobj* cso = new syncobj(0, 1, 1);
+  char* reqstr = new char[request.size()+1];
+  memcpy(reqstr, request.c_str(), request.size()+1);
+  while(itr!=svrlst.end())
+  {
+    std::string ldbsvrip = itr->_ip;
+    const uint16_t ldbsvrport = itr->_port;
+    itr++;
+    client clt = client(ldbsvrip.c_str(), ldbsvrport);
+    clt.sendstring_noblock(reqstr, cso, numdone);
+  }
+  //for eventual consistency, we wait for at least one ack.
+  if (pthread_mutex_lock(&cso->_mutex_arr[0])) throw THREAD_ERROR;
+  while(!(*numdone))
+    pthread_cond_wait(&cso->_cv_arr[0], &cso->_mutex_arr[0]);
+  if (pthread_mutex_unlock(&cso->_mutex_arr[0])) throw THREAD_ERROR;
+  //delete cso;
+  std::vector<void*>* cleanarg = new std::vector<void*>;
+  cleanarg->push_back((void*)cso);
+  cleanarg->push_back((void*)numdone);
+  cleanarg->push_back((void*)numtotal);
+  cleanarg->push_back((void*)reqstr);
+  pthread_t cleanup_thread; //clean up numdone in background
+  if (pthread_create(&cleanup_thread, 
+      0, &cleanup_thread_handler, (void*)cleanarg))
+      throw THREAD_ERROR;
+}
   return 0;
+}
+
+void* gateserver::cleanup_thread_handler(void* arg)
+{
+  std::vector<void*>* cleanarg = (std::vector<void*>*)arg;
+  syncobj* cso = (syncobj*)((*cleanarg)[0]);
+  int* numdone = (int*)((*cleanarg)[1]);
+  int* numtotal = (int*)((*cleanarg)[2]);
+  char* reqstr = (char*)((*cleanarg)[3]);
+  if (pthread_mutex_lock(&cso->_mutex_arr[0])) throw THREAD_ERROR;
+  while (*numdone < *numtotal) 
+    pthread_cond_wait(&cso->_cv_arr[0], &cso->_mutex_arr[0]);
+  if (pthread_mutex_unlock(&cso->_mutex_arr[0])) throw THREAD_ERROR;
+  delete cso;
+  delete numdone;
+  delete cleanarg;
+  delete [] reqstr;
 }
 

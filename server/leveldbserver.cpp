@@ -163,11 +163,17 @@ void* leveldbserver::send_thread(void* arg)
   if (pthread_mutex_unlock(&cv_mutex)!=0) throw THREAD_ERROR;
   const char* resp = resp_str.c_str();
   size_t resp_len = strlen(resp)+1;
-
-  if (pthread_mutex_lock(&socket_mutex)!=0) throw THREAD_ERROR;
-  if (write(clfd,resp,resp_len)!=resp_len) throw FILE_IO_ERROR;
-  if (pthread_mutex_unlock(&socket_mutex)!=0) throw THREAD_ERROR;
-
+  size_t rmsz = resp_len;
+  size_t byte_sent = -1;
+  while (rmsz>0)
+  {
+    if (pthread_mutex_lock(&socket_mutex)!=0) throw THREAD_ERROR;
+    byte_sent = write(clfd,resp,rmsz);
+    if (pthread_mutex_unlock(&socket_mutex)!=0) throw THREAD_ERROR;
+    if (byte_sent<0) throw FILE_IO_ERROR;
+    rmsz -= byte_sent;
+    resp += byte_sent;
+  }
   return 0;
 }
 
@@ -192,12 +198,7 @@ void* leveldbserver::recv_thread(void* arg)
     if (pthread_mutex_lock(&socket_mutex)!=0) throw THREAD_ERROR;
     byte_received=read(clfd, buf, BUF_SIZE);
     if (pthread_mutex_unlock(&socket_mutex)!=0) throw THREAD_ERROR;
-    if (byte_received < BUF_SIZE)
-    {
-      buf[byte_received] = '\0';
-      done = true;
-    }
-    else if(buf[byte_received-1]=='\0')
+    if(buf[byte_received-1]=='\0')
       done = true;
     
     request = request + std::string(buf);

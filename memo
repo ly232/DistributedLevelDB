@@ -1,0 +1,16 @@
+gateserver::getobjbykey():
+	svrlst=cluster_get(k);
+	n=svrlst.size();
+	cso=syncobj(n,1,1);//thread,cv,mutex
+	itr=svrlst.begin()
+	client clt(this->ip, this->port);
+	while(itr!=svrlist.end())
+	{
+		client.sendstring_noblock(req,resp);
+	}
+	lock(cv_mutex);
+	while(resp=="")
+		cv.wait()
+	unlock(cv_mutex);
+	//the last notify will invoke delete routine? 
+	//maybe not...since client is in this scope. so client exit will close client socket...

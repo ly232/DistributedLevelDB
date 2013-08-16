@@ -1,5 +1,5 @@
 CC = g++
-FLAGS += -I. -I./include -I./client -I./server -I./util
+FLAGS += -g -I. -I./include -I./client -I./server -I./util
 
 all: c.out g.out l.out
 
