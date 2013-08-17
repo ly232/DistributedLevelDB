@@ -19,13 +19,9 @@ client parse requests into json messages, then send to gateway server via client
 
 II. server:
 
-1. gateway server:
+1. gateway server: gateway server accepts requests from client, then contact a subset of all leveldb servers to process the client request. the subset is selected via a cluster manager, which is implemented as a separate thread of the gateway server process and runs as a separate server (i.e. the cluster manager has its own port). whenever a leveldb server joins, the cluster manager hashes the leveldb server's ip and port into one of its MAX_CLUSTER clusters (MAX_CLUSTER is a predefined constant in include/common.h). then, for each client request with key k, that request will be processed by all leveldb servers in cluster hash(k).
 
-gateway server accepts requests from client, then contact a subset of all leveldb servers to process the client request. the subset is selected via a cluster manager, which is implemented as a separate thread of the gateway server process and runs as a separate server (i.e. the cluster manager has its own port). whenever a leveldb server joins, the cluster manager hashes the leveldb server's ip and port into one of its MAX_CLUSTER clusters (MAX_CLUSTER is a predefined constant in include/common.h). then, for each client request with key k, that request will be processed by all leveldb servers in cluster hash(k).
-
-2. leveldb server:
-
-leveldb server interfaces with leveldb api's. it accepts requests as json messages, then parse out the key and value parts. it returns leveldb api's return falues as json strings to gateway server. each leveldb server belongs to exactly one cluster. its cluster id is determined by hash(levedb server ip, leveldb server port).
+2. leveldb server: leveldb server interfaces with leveldb api's. it accepts requests as json messages, then parse out the key and value parts. it returns leveldb api's return falues as json strings to gateway server. each leveldb server belongs to exactly one cluster. its cluster id is determined by hash(levedb server ip, leveldb server port).
 
 EXAMPLES:
 =================
