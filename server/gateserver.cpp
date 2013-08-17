@@ -28,7 +28,7 @@ void* gateserver::cluster_server_init(void* arg)
 gateserver::gateserver(const uint16_t gsport, 
 		       const uint16_t csport, 
 		       const char* ip)
-  :server(gsport, ip),sync_client(true)
+  :server(gsport, ip),sync_client(false)
 {
   //start cluster server to 
   //monitor leveldb servers join/leave cluster
@@ -140,12 +140,15 @@ void* gateserver::send_thread(void* arg)
   pthread_cond_t& cv = ((syncobj*)argv[1])->_cv_arr[0];
   std::string& resp_str = (*(std::string*)argv[2]);
 
+
   //wait until recv thread finishes reception 
   //and get a response from leveldb server
   if (pthread_mutex_lock(&cv_mutex)!=0) throw THREAD_ERROR;
   while(resp_str.empty())
     pthread_cond_wait(&cv, &cv_mutex);
   if (pthread_mutex_unlock(&cv_mutex)!=0) throw THREAD_ERROR;
+
+
   const char* resp = resp_str.c_str();
   size_t resp_len = strlen(resp)+1;
   size_t rmsz = resp_len;
@@ -221,6 +224,8 @@ void* gateserver::recv_thread(void* arg)
     if (pthread_cond_signal(&cv)!=0) throw THREAD_ERROR;
     return 0;
   }
+  std::string sync = root["sync"].asString();
+  (sync=="true")?gatesvr->setsync():gatesvr->setasync();
 
   // pick a leveldb server to forward request
   // now gateserver acts as client to leveldbserver
@@ -255,7 +260,7 @@ if (gatesvr->sync_client)
       if (pthread_mutex_unlock(&cv_mutex)!=0) continue;
     }
   }
-  if (!skip)
+  if (!skip) //no leveldb response is positive
   {
     if (pthread_mutex_lock(&cv_mutex)!=0) 
       throw THREAD_ERROR;
@@ -276,13 +281,19 @@ else //async client, i.e. call client::sendstring_noblock
   syncobj* cso = new syncobj(0, 1, 1);
   char* reqstr = new char[request.size()+1];
   memcpy(reqstr, request.c_str(), request.size()+1);
+  std::vector<client*>* client_vec = new std::vector<client*>();
+  std::vector<std::string*>* ldback_vec = new std::vector<std::string*>();
   while(itr!=svrlst.end())
   {
     std::string ldbsvrip = itr->_ip;
     const uint16_t ldbsvrport = itr->_port;
     itr++;
-    client clt = client(ldbsvrip.c_str(), ldbsvrport);
-    clt.sendstring_noblock(reqstr, cso, numdone);
+    std::string* ldback = new std::string;
+    *ldback = "";
+    ldback_vec->push_back(ldback);
+    client* clt = new client(ldbsvrip.c_str(), ldbsvrport);
+    clt->sendstring_noblock(reqstr, cso, numdone, numtotal, ldback);
+    client_vec->push_back(clt);
   }
   //for eventual consistency, we wait for at least one ack.
   if (pthread_mutex_lock(&cso->_mutex_arr[0])) throw THREAD_ERROR;
@@ -295,10 +306,29 @@ else //async client, i.e. call client::sendstring_noblock
   cleanarg->push_back((void*)numdone);
   cleanarg->push_back((void*)numtotal);
   cleanarg->push_back((void*)reqstr);
+  cleanarg->push_back((void*)client_vec);
+  cleanarg->push_back((void*)ldback_vec);
   pthread_t cleanup_thread; //clean up numdone in background
   if (pthread_create(&cleanup_thread, 
       0, &cleanup_thread_handler, (void*)cleanarg))
       throw THREAD_ERROR;
+
+  int ldbacksz = ldback_vec->size();
+  for (int i=0; i<ldbacksz; i++)
+  {
+    std::string* ldback = (*ldback_vec)[i];
+    if (*ldback!="")
+    {
+      if (pthread_mutex_lock(&cv_mutex)!=0) 
+        throw THREAD_ERROR;
+      *ackmsg = *ldback;
+      if (pthread_mutex_unlock(&cv_mutex)!=0)
+        throw THREAD_ERROR;
+      break;
+    }
+  } 
+    
+  if (pthread_cond_signal(&cv)!=0) throw THREAD_ERROR;
 }
   return 0;
 }
@@ -310,13 +340,26 @@ void* gateserver::cleanup_thread_handler(void* arg)
   int* numdone = (int*)((*cleanarg)[1]);
   int* numtotal = (int*)((*cleanarg)[2]);
   char* reqstr = (char*)((*cleanarg)[3]);
+  std::vector<client*>* client_vec =
+    (std::vector<client*>*)((*cleanarg)[4]);
+  std::vector<std::string*>* ldback_vec =
+    (std::vector<std::string*>*)((*cleanarg)[5]);
   if (pthread_mutex_lock(&cso->_mutex_arr[0])) throw THREAD_ERROR;
   while (*numdone < *numtotal) 
     pthread_cond_wait(&cso->_cv_arr[0], &cso->_mutex_arr[0]);
   if (pthread_mutex_unlock(&cso->_mutex_arr[0])) throw THREAD_ERROR;
   delete cso;
   delete numdone;
+  delete numtotal;
   delete cleanarg;
   delete [] reqstr;
+  int numclient = client_vec->size();
+  for (int i=0; i<numclient; i++)
+  {
+    delete (*client_vec)[i];
+    delete (*ldback_vec)[i];
+  }
+  delete client_vec;
+  delete ldback_vec;
 }
 

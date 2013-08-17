@@ -36,7 +36,7 @@ server::server(const uint16_t port, const char* ip)
       for(ifa = ifaAddrStruct; ifa!=NULL; ifa = ifa->ifa_next)
       {
 	if (ifa->ifa_addr->sa_family==AF_INET //ipv4
-	    && strcmp(ifa->ifa_name,"lo")==0) //eth0 or lo
+	    && strcmp(ifa->ifa_name,"eth0")==0) //eth0 or lo
 	{
 	  //only deal with ethernet ipv4 for now...
 	  //may support ipv6 in future

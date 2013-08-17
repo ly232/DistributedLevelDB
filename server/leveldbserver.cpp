@@ -13,6 +13,7 @@ leveldbserver::leveldbserver(const uint16_t cluster_svr_port,
   :server(port, ip), _cluster_svr_port(cluster_svr_port)
 {
   _cluster_svr_ip = (cluster_svr_ip=="")?getip():cluster_svr_ip;
+std::cout<<"cluster ip:"<<_cluster_svr_ip<<std::endl;
   options.create_if_missing = true;
   status = leveldb::DB::Open(options, dbdir, &db);
   if (!status.ok())

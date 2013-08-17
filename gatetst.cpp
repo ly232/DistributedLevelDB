@@ -2,10 +2,11 @@
 //gateway server test
 #include "include/gateserver.h"
 using namespace std;
-int main()
+int main(int argc, char** argv)
 {
 try{
-  gateserver gs(9999, 9998); //gate svr port, cluster svr port
+  char* ip = (argc>1)?argv[1]:NULL;
+  gateserver gs(9999, 9998, ip); //gate svr port, cluster svr port
   cout<<"gateways server test"<<endl;
   cout<<"hostname: "<<gs.getsvrname()<<endl;
   cout<<"ip: "<<gs.getip()<<endl;

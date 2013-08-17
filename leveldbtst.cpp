@@ -12,12 +12,14 @@ void signal_callback_handler(int signum)
   exit(signum);
 }
 
-int main()
+int main(int argc, char** argv)
 {
 try
 {
   signal(SIGINT, signal_callback_handler);
-  ls = new leveldbserver(9998,8888);
+  std::string clusterip = (argc==3)?std::string(argv[1]):"";
+  char* selfip = (argc==3)?argv[2]:NULL;
+  ls = new leveldbserver(9998,8888,clusterip,selfip);
   cout<<"leveldb server test"<<endl;
   cout<<"hostname: "<<ls->getsvrname()<<endl;
   cout<<"ip: "<<ls->getip()<<endl;

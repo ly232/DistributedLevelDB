@@ -1,6 +1,7 @@
 //client.cpp
 #include "include/client.h"
 #include "include/syncobj.h"
+#include <jsoncpp/json.h>
 
 client::client(const char* remote_ip, 
 	       const uint16_t remote_port)
@@ -127,7 +128,7 @@ void* client::send_thread(void* arg)
       byte_sent = write(sock_fd, buf, cpsz);
       if (byte_sent<0)
       {
-        printf("client sendstring write faile\n");
+        printf("client sendstring write faile. sockfd=%d, errno=%d\n",sock_fd,errno);
         throw FILE_IO_ERROR;
       }
       pthread_mutex_unlock(&sock_mutex);
@@ -173,9 +174,16 @@ void* client::recv_thread(void* arg)
 //the caller must provide a syncobj for callee to notify
 //when a response is received.
 //i.e. caller is blocked until some client responds.
+//inputs are created by caller on heap,
+//but sendstring_noblock does not free it.
+//this is because callee does not know whether req is 
+//being shared by other threads calling this sendstring_noblock api
+//so the caller must spawn a cleanup thread to free up inputs
 void client::sendstring_noblock(const char* req, 
-				syncobj* so, 
-				int* numdone)
+				syncobj* cso, 
+				int* numdone,
+				int* numtotal,
+				std::string* ldback)
 {
   if (!goodconn)
   {
@@ -187,10 +195,13 @@ void client::sendstring_noblock(const char* req,
   pthread_t main_thread_obj;
   std::vector<void*>* argv = new std::vector<void*>;
     //argv will be deleted by main thread
-  argv->push_back((void*)this);
   argv->push_back((void*)req);
-  argv->push_back((void*)so);
+  argv->push_back((void*)cso);
   argv->push_back((void*)numdone);
+  argv->push_back((void*)this);
+  argv->push_back((void*)numtotal);
+  argv->push_back((void*)ldback);
+
   if(pthread_create(&main_thread_obj, 
 		 0, 
 		 &main_thread, 
@@ -198,11 +209,38 @@ void client::sendstring_noblock(const char* req,
      !=0)
     throw THREAD_ERROR;
   return;
-  //if (hasResp) return; //some other ldbserver already replied
 }
 
 void* client::main_thread(void* arg)
 {
+  std::vector<void*>* argv = (std::vector<void*>*) arg;
+  char* req = (char*)((*argv)[0]);
+  syncobj* cso = (syncobj*)((*argv)[1]);
+  int* numdone = (int*)((*argv)[2]);
+  client* handle = (client*)((*argv)[3]);
+  int* numtotal = (int*)((*argv)[4]);
+  std::string* ldback = (std::string*)((*argv)[5]);
 
+  pthread_cond_t& cv = cso->_cv_arr[0];
+  pthread_mutex_t& cv_mutex = cso->_mutex_arr[0];
+  
+  *ldback = handle->sendstring(req); //this blocks
+  
+  Json::Value root;
+  Json::Reader reader;
+  if (!reader.parse(*ldback,root))
+  {
+    printf("error: json parser failed at client::main_thread\n");
+    throw THREAD_ERROR;
+  }
+  std::string status = root["status"].asString();
+  
+  if (pthread_mutex_lock(&cv_mutex)!=0) throw THREAD_ERROR;
+  (*numdone)++;
+  bool alldone = (*numdone==*numtotal);
+  if (pthread_mutex_unlock(&cv_mutex)!=0) throw THREAD_ERROR;
+  if (status=="OK" || alldone) //alldone will reactivate cleanup thread
+  {
+    if (pthread_cond_signal(&cv)!=0) throw THREAD_ERROR;
+  }
 }
-

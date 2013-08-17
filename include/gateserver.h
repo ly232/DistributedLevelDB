@@ -22,6 +22,8 @@ public:
 	     const char* ip = NULL);
   virtual void requestHandler(int clfd);
   virtual ~gateserver();
+  void setsync(){sync_client = true;};
+  void setasync(){sync_client = false;};
 private:
   static void* main_thread(void*);
   static void* send_thread(void*);

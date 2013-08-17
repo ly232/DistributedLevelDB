@@ -16,10 +16,12 @@ public:
   client(const char* remote_ip, const uint16_t remote_port);
   ~client();
   void sendfile(const char* fname);
-  std::string sendstring(const char* str);
+  std::string sendstring(const char* str); //remote client always use this version
   void sendstring_noblock(const char* req, 
 			  syncobj* so, 
-			  int* numdone);
+			  int* numdone,
+			  int* numtotal,
+			  std::string* ldback);
 private:
   bool goodconn;
   int socket_fd;

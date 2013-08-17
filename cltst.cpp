@@ -18,6 +18,9 @@ int main(int argc, char** argv)
     root["req_type"] = "put";
     root["req_args"]["key"] = "ly232";
     root["req_args"]["value"] = "Lin Yang";
+    root["sync"] = "true"; //tell server to ensure consistency before ack
+                           //alternatively, if this field is not specified,
+                           //server will be eventually consistent
     Json::StyledWriter writer;
     std::string outputConfig = writer.write(root);
 
