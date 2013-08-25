@@ -188,8 +188,9 @@ void clusterserver::process_cluster_request(std::string& request,
   {
     std::string ip = root["req_args"]["ip"].asString();
     uint16_t port = (uint16_t)root["req_args"]["port"].asInt();
-    
     server_address sa(ip, port);
+    std::cout<<"cluster id="<<sa._hash<<std::endl;
+
     cs->register_server(sa._hash, sa);
     
     root.clear();

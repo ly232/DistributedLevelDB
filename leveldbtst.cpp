@@ -17,9 +17,44 @@ int main(int argc, char** argv)
 try
 {
   signal(SIGINT, signal_callback_handler);
-  std::string clusterip = (argc==3)?std::string(argv[1]):"";
-  char* selfip = (argc==3)?argv[2]:NULL;
-  ls = new leveldbserver(9998,8888,clusterip,selfip);
+
+  uint16_t clusterport = 9998;//(argc==5)?atoi(argv[1]):9998;
+  uint16_t selfport = 8888;//(argc==5)?atoi(argv[2]):8888;
+  std::string clusterip = "";//(argc==5)?std::string(argv[3]):"";
+  char* selfip = NULL;//(argc==5)?argv[4]:NULL;
+  std::string dbdir = "/home/ly232/levdb/db0";
+
+  for (int i=1; i<argc; i++)
+  {
+    char* option = argv[i];
+    if (!strcmp(option,"-clusterport"))
+    {
+      clusterport = atoi(argv[++i]);
+      continue;
+    }
+    if (!strcmp(option,"-selfport"))
+    {
+      selfport = atoi(argv[++i]);
+      continue;
+    }
+    if (!strcmp(option,"-clusterip"))
+    {
+      clusterip = std::string(argv[++i]);
+      continue;
+    }
+    if (!strcmp(option,"-selfip"))
+    {
+      selfip = argv[++i];
+      continue;
+    }
+    if (!strcmp(option,"-dbdir"))
+    {
+      dbdir = std::string(argv[++i]);
+      continue;
+    }
+  }
+
+  ls = new leveldbserver(clusterport,selfport,clusterip,selfip,dbdir);
   cout<<"leveldb server test"<<endl;
   cout<<"hostname: "<<ls->getsvrname()<<endl;
   cout<<"ip: "<<ls->getip()<<endl;
