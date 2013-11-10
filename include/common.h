@@ -19,22 +19,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <assert.h>
 #include <iostream>
 #include <pthread.h>
 #include <vector>
 #include <map>
+#include <queue>
 #include <list>
 #include <ctime>
 //constants:
 #define BUF_SIZE 99999
 #define MAX_CONN 5
-#define MAX_CLUSTER 1 //max number of leveldb server clusters
+#define MAX_CLUSTER 2 //max number of leveldb server clusters
                       //a cluster is a set of leveldb servers
                       //a tuple (k,v) belongs to cluster hash(k) only
                       //note that hash(k) must be 
                       //in range {0...MAX_CLUSTER-1}
                       //IMPORTANT: each cluster must have at least one
-                      //           leveldb server
+                      //           leveldb server. i.e. there must be
+                      //           at least MAX_CLUSTER leveldb servers
+                      //           available at any time.
 //error code:
 #define SOCKET_CONSTRUCT_ERROR 1;
 #define SOCKET_BIND_ERROR 2;
@@ -49,5 +53,14 @@
 #define THREAD_ERROR 11;
 #define DB_FAIL 12;
 #define CLUSTER_FAIL 13;
-
+//utility api's:
+inline size_t hash(std::string& s)
+{
+  size_t len = s.length();
+  size_t val = 0;
+  for (int i=0; i<len; i++)
+    val += (size_t)s[i];
+  val %= MAX_CLUSTER;
+  return val;
+}
 #endif

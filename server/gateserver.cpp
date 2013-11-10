@@ -4,16 +4,6 @@
 #include "include/client.h"
 #include <jsoncpp/json.h>
 
-static size_t hash(std::string& s)
-{
-  size_t len = s.length();
-  size_t val = 0;
-  for (int i=0; i<len; i++)
-    val += (size_t)s[i];
-  val %= MAX_CLUSTER;
-  return val;
-}
-
 void* gateserver::cluster_server_init(void* arg)
 {
   gateserver* gs = (gateserver*) arg;
@@ -234,17 +224,17 @@ void* gateserver::recv_thread(void* arg)
   std::string ldback;
   size_t cluster_id = hash(key);
 //std::cout<<"clusterid="<<cluster_id<<std::endl;
-  std::list<server_address>& svrlst = 
+  std::list<ip_port >& svrlst = 
     gatesvr->cs->get_server_list(cluster_id);
-  std::list<server_address>::iterator itr 
+  std::list<ip_port >::iterator itr 
     = svrlst.begin();
 //std::cout<<"svrlst.size()="<<svrlst.size()<<std::endl;
 if (gatesvr->sync_client)
 {
   while(itr!=svrlst.end())
   {
-    std::string ldbsvrip = itr->_ip;
-    const uint16_t ldbsvrport = itr->_port;
+    std::string ldbsvrip = itr->first;
+    const uint16_t ldbsvrport = itr->second;
 //std::cout<<"ldbsvrip,port="<<ldbsvrip<<","<<ldbsvrport<<std::endl;
     itr++;
     client clt(ldbsvrip.c_str(), ldbsvrport);
@@ -285,8 +275,8 @@ else //async client, i.e. call client::sendstring_noblock
   std::vector<std::string*>* ldback_vec = new std::vector<std::string*>();
   while(itr!=svrlst.end())
   {
-    std::string ldbsvrip = itr->_ip;
-    const uint16_t ldbsvrport = itr->_port;
+    std::string ldbsvrip = itr->first;
+    const uint16_t ldbsvrport = itr->second;
     itr++;
     std::string* ldback = new std::string;
     *ldback = "";

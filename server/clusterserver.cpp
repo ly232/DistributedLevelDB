@@ -5,15 +5,69 @@
 #include <jsoncpp/json.h>
 #include <algorithm>
 
-static size_t hash(std::string& s)
+clusterserver::cluster_min_heap::cluster_min_heap()
 {
-  size_t len = s.length();
-  size_t val = 0;
-  for (int i=0; i<len; i++)
-    val += (size_t)s[i];
-  val %= MAX_CLUSTER;
-  return val;
-}
+  cluster_id_sz cis;
+  heap.push_back(cis);
+  for (int i=0; i<MAX_CLUSTER; i++){
+    cis.first = i; //cluster id
+    cis.second = 0; //cluster size
+    heap.push_back(cis);
+    cluster_heap_idx.push_back(i+1);
+  }
+};
+void clusterserver::cluster_min_heap::changesz(uint16_t cluster_id, 
+                                               uint16_t cluster_sz)
+{
+  int chi = cluster_heap_idx[cluster_id];
+  assert(heap[chi].first==cluster_id);
+  if (cluster_sz > heap[chi].second)
+  { //increase size ==> percolate down
+    heap[chi].second = cluster_sz;
+    while (chi*2<heap.size())
+    {
+      int swapidx = chi*2;
+      if (swapidx+1<heap.size()) 
+      {
+        if (heap[swapidx+1].second<heap[swapidx].second)
+        {
+          swapidx++;
+        }
+      }
+      if (cluster_sz>heap[swapidx].second)
+      { //swap elements:
+        cluster_heap_idx[heap[swapidx].first] = chi;
+        cluster_id_sz tmp = heap[chi];
+        heap[chi] = heap[swapidx];
+        heap[swapidx] = tmp;
+        chi = swapidx;
+      } 
+      else break;
+    }
+  }
+  else
+  { //decrease size ==> percolate up
+    heap[chi].second = cluster_sz;
+    while (chi/2>1)
+    {
+      int swapidx = chi/2;
+      if (cluster_sz<heap[swapidx].second)
+      { //swap elements:
+        cluster_heap_idx[heap[swapidx].first] = chi;
+        cluster_id_sz tmp = heap[chi];
+        heap[chi] = heap[swapidx];
+        heap[swapidx] = tmp;
+        chi = swapidx;
+      } 
+      else break;
+    }
+  }
+  cluster_heap_idx[cluster_id] = chi;
+};
+uint16_t clusterserver::cluster_min_heap::get_min_cluster_id()
+{
+  return heap[1].first;
+};
 
 clusterserver::clusterserver(const uint16_t port, 
 			     const char* ip)
@@ -188,48 +242,38 @@ void clusterserver::process_cluster_request(std::string& request,
   {
     std::string ip = root["req_args"]["ip"].asString();
     uint16_t port = (uint16_t)root["req_args"]["port"].asInt();
-    server_address sa(ip, port);
-    std::cout<<"cluster id="<<sa._hash<<std::endl;
-
-    cs->register_server(sa._hash, sa);
-    
+    uint16_t cluster_id = cs->register_server(ip,port);
+    cs->ldbsvr_cluster_map[ip_port(ip,port)] = cluster_id;
     root.clear();
     root["result"] = "ok";
+    root["cluster_id"] = cluster_id;
   }
   else if (req_type=="leave")
   {
     std::string ip = root["req_args"]["ip"].asString();
     uint16_t port = (uint16_t)root["req_args"]["port"].asInt();
     root.clear();
-    server_address sa(ip,port);
-    std::list<server_address>& sl = 
-      cs->get_server_list(sa._hash);
-    std::list<server_address>::iterator it = sl.begin();
-    while (it!=sl.end())
-    {
-      if (*it==sa)
-	break;
-      it++;
-    }
-    if (it==sl.end()) //address is not on list...do nothing
-      root["result"] = "";
+    ip_port ldbsvr_id = ip_port(ip,port);
+    std::map<ip_port, uint16_t>::iterator mapitr = 
+        cs->ldbsvr_cluster_map.find(ldbsvr_id);
+    if (mapitr==cs->ldbsvr_cluster_map.end()) root["result"] = "";
     else
     {
       root["result"] = "ok";
-      sl.erase(it);
+      cs->ldbsvr_cluster_map.erase(mapitr);
     }
   }
   else if (req_type=="get_cluster_list")
   {
     std::string key = root["req_args"]["key"].asString();
     root.clear();
-    std::list<server_address>& sl = cs->get_server_list(hash(key));
-    std::list<server_address>::iterator it = sl.begin();
+    std::list<ip_port>& sl = cs->get_server_list(hash(key));
+    std::list<ip_port>::iterator it = sl.begin();
     int i = 0;
     while (it!=sl.end())
     {
-      root["result"][i]["ip"] = it->_ip;
-      root["result"][i]["port"] = (int) it->_port;
+      root["result"][i]["ip"] = it->first;
+      root["result"][i]["port"] = (int) it->second;
       it++;
     }
   }
@@ -240,13 +284,20 @@ void clusterserver::process_cluster_request(std::string& request,
   response = writer.write(root);
 }
 
-void clusterserver::register_server(const size_t cluster_id, 
-				    const server_address& svr)
+/*
+assign given server ip/port to the smallest cluster. return cluster id.
+*/
+uint16_t clusterserver::register_server(const std::string& ip, 
+                                        const uint16_t port)
 {
-  ctbl[cluster_id].push_back(svr);
+  int cluster_id = cmh.get_min_cluster_id();
+  ctbl[cluster_id].push_back(ip_port(ip,port));
+  cmh.changesz(cluster_id,
+                cmh.heap[cmh.cluster_heap_idx[cluster_id]].second+1);
+  return cluster_id;
 }
 
-std::list<server_address>& 
+std::list<ip_port >& 
 clusterserver::get_server_list(const size_t cluster_id)
 {
   return ctbl[cluster_id];

@@ -9,6 +9,8 @@
 #include "common.h"
 #endif
 
+typedef std::pair<std::string, uint16_t> ip_port;
+
 class server
 {
 public:
@@ -32,7 +34,7 @@ private:
 
 //instead of using struct sockaddr_in, we simplify server address
 //with just ip and port, so that it's easier to compute and store 
-//thee hash for cluster management
+//the hash for cluster management
 struct server_address
 {
   server_address(std::string ip, 
