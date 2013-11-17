@@ -1,0 +1,1 @@
+1. if some clusters do not have any leveldb server, then a client request whose key hashes into one of those empty clusters will hang the system.
