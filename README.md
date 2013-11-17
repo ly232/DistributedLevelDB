@@ -25,8 +25,11 @@ II. server:
 
 EXAMPLES:
 =================
-client: cltst.cpp
+1) start gateway server:
+$ ./g.out
 
-gateway server: gatetst.cpp
+2) start leveldb servers (run the same common for EACH leveldb server):
+$ ./l.out -clusterip <gateserver cluster ip> -clusterport <gateserver cluster port> -selfport <leveldb server port> -dbdir <db directory>
 
-leveldb server: leveldbtst.cpp
+3) test client:
+$ ./c.out

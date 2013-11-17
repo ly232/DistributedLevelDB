@@ -14,6 +14,7 @@ leveldbserver::leveldbserver(const uint16_t cluster_svr_port,
 {
   _cluster_svr_ip = (cluster_svr_ip=="")?getip():cluster_svr_ip;
 std::cout<<"cluster ip:"<<_cluster_svr_ip<<std::endl;
+std::cout<<"db dir: "<<dbdir<<std::endl;
   options.create_if_missing = true;
   status = leveldb::DB::Open(options, dbdir, &db);
   if (!status.ok())
@@ -95,6 +96,7 @@ std::cout<<"calling join_cluster to ip "
   root["req_args"]["port"] = getport();
   std::string request = writer.write(root);
   std::string response = clt.sendstring(request.c_str());
+  std::cout<<"join cluster response: "<<response<<std::endl;
   root.clear();
   if (!reader.parse(response,root))
   {

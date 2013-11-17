@@ -140,7 +140,6 @@ void* gateserver::send_thread(void* arg)
   pthread_cond_t& cv = ((syncobj*)argv[1])->_cv_arr[0];
   std::string& resp_str = (*(std::string*)argv[2]);
 
-
   //wait until recv thread finishes reception 
   //and get a response from leveldb server
   if (pthread_mutex_lock(&cv_mutex)!=0) throw THREAD_ERROR;
@@ -226,7 +225,6 @@ void* gateserver::recv_thread(void* arg)
   }
   std::string sync = root["sync"].asString();
   (sync=="true")?gatesvr->setsync():gatesvr->setasync();
-
   // pick a leveldb server to forward request
   // now gateserver acts as client to leveldbserver
   //char ldbsvrip[INET_ADDRSTRLEN] = "192.168.75.164";
@@ -234,18 +232,20 @@ void* gateserver::recv_thread(void* arg)
   std::string key = root["req_args"]["key"].asString();
   bool skip = false;
   std::string ldback;
-  const size_t cluster_id = hash(key);
+  size_t cluster_id = hash(key);
+//std::cout<<"clusterid="<<cluster_id<<std::endl;
   std::list<server_address>& svrlst = 
     gatesvr->cs->get_server_list(cluster_id);
   std::list<server_address>::iterator itr 
     = svrlst.begin();
-  
+//std::cout<<"svrlst.size()="<<svrlst.size()<<std::endl;
 if (gatesvr->sync_client)
 {
   while(itr!=svrlst.end())
   {
     std::string ldbsvrip = itr->_ip;
     const uint16_t ldbsvrport = itr->_port;
+//std::cout<<"ldbsvrip,port="<<ldbsvrip<<","<<ldbsvrport<<std::endl;
     itr++;
     client clt(ldbsvrip.c_str(), ldbsvrport);
     ldback = clt.sendstring(request.c_str());

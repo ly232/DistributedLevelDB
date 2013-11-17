@@ -22,11 +22,13 @@
 #include <iostream>
 #include <pthread.h>
 #include <vector>
+#include <map>
 #include <list>
+#include <ctime>
 //constants:
 #define BUF_SIZE 99999
 #define MAX_CONN 5
-#define MAX_CLUSTER 2 //max number of leveldb server clusters
+#define MAX_CLUSTER 1 //max number of leveldb server clusters
                       //a cluster is a set of leveldb servers
                       //a tuple (k,v) belongs to cluster hash(k) only
                       //note that hash(k) must be 

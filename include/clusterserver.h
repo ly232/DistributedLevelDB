@@ -22,6 +22,7 @@ public:
 private:
   std::vector<std::list<server_address> > 
     ctbl; //cluster table, maps cluster id to server list
+  //std::map<int,std::list<server_address> > ctbl;
   pthread_t thread_obj;
 
   static void* main_thread(void*);
