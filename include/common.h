@@ -33,8 +33,8 @@
                       //a tuple (k,v) belongs to cluster hash(k) only
                       //note that hash(k) must be 
                       //in range {0...MAX_CLUSTER-1}
-                      //IMPORTANT: there must be at least MAX_CLUSTER
-                      //           number of leveldb servers
+                      //IMPORTANT: each cluster must have at least one
+                      //           leveldb server
 //error code:
 #define SOCKET_CONSTRUCT_ERROR 1;
 #define SOCKET_BIND_ERROR 2;
