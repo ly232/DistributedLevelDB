@@ -10,7 +10,7 @@
 #include "server.h"
 #endif
 
-typedef std::pair<int,int> key_range
+typedef std::pair<int,int> key_range;
 
 class clusterserver : public server
 {
@@ -22,9 +22,9 @@ public:
   std::list<server_address>& 
     get_server_list(const size_t cluster_id);
 private:
-  //std::vector<std::list<server_address> > 
-  //  ctbl; //cluster table, maps cluster id to server list
-  std::map<key_range,std::list<server_address> > ctbl;
+  std::vector<std::list<server_address> > 
+    ctbl; //cluster table, maps cluster id to server list
+  //std::map<key_range,std::list<server_address> > ctbl;
   pthread_t thread_obj;
 
   static void* main_thread(void*);
