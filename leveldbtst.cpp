@@ -7,9 +7,15 @@ leveldbserver* ls;
 
 void signal_callback_handler(int signum)
 {
-  //printf("caught signal %d\n",signum);
   delete ls;
   exit(signum);
+}
+
+void printusage()
+{
+  cout<<"leveldb server usage:"<<endl;
+  cout<<"./l.out [--clusterport] [--selfport] "<<
+                "[--clusterip] [--selfip] [--dbdir]"<<endl;
 }
 
 int main(int argc, char** argv)
@@ -27,27 +33,32 @@ try
   for (int i=1; i<argc; i++)
   {
     char* option = argv[i];
-    if (!strcmp(option,"-clusterport"))
+    if (!strcmp(option,"--help"))
+    {
+      printusage();
+      return 0;
+    }
+    if (!strcmp(option,"--clusterport"))
     {
       clusterport = atoi(argv[++i]);
       continue;
     }
-    if (!strcmp(option,"-selfport"))
+    if (!strcmp(option,"--selfport"))
     {
       selfport = atoi(argv[++i]);
       continue;
     }
-    if (!strcmp(option,"-clusterip"))
+    if (!strcmp(option,"--clusterip"))
     {
       clusterip = std::string(argv[++i]);
       continue;
     }
-    if (!strcmp(option,"-selfip"))
+    if (!strcmp(option,"--selfip"))
     {
       selfip = argv[++i];
       continue;
     }
-    if (!strcmp(option,"-dbdir"))
+    if (!strcmp(option,"--dbdir"))
     {
       dbdir = std::string(argv[++i]);
       continue;

@@ -24,6 +24,7 @@ public:
   virtual ~gateserver();
   void setsync(){sync_client = true;};
   void setasync(){sync_client = false;};
+  void join_cluster(std::string& joinip, uint16_t joinport);
 private:
   static void* main_thread(void*);
   static void* send_thread(void*);

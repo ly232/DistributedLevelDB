@@ -239,7 +239,7 @@ void clusterserver::process_cluster_request(std::string& request,
 		 req_type.begin(), 
 		 ::tolower);
   if (req_type=="join")
-  {
+  { //TODO: need sync protection on ctbl, cmh, and ldbsvr_cluster_map
     std::string ip = root["req_args"]["ip"].asString();
     uint16_t port = (uint16_t)root["req_args"]["port"].asInt();
     uint16_t cluster_id = cs->register_server(ip,port);
@@ -249,7 +249,7 @@ void clusterserver::process_cluster_request(std::string& request,
     root["cluster_id"] = cluster_id;
   }
   else if (req_type=="leave")
-  {
+  { //TODO: need sync protection on ctbl, cmh, and ldbsvr_cluster_map
     std::string ip = root["req_args"]["ip"].asString();
     uint16_t port = (uint16_t)root["req_args"]["port"].asInt();
     root.clear();
@@ -267,8 +267,8 @@ void clusterserver::process_cluster_request(std::string& request,
   {
     std::string key = root["req_args"]["key"].asString();
     root.clear();
-    std::list<ip_port>& sl = cs->get_server_list(hash(key));
-    std::list<ip_port>::iterator it = sl.begin();
+    std::vector<ip_port>& sl = cs->get_server_list(hash(key));
+    std::vector<ip_port>::iterator it = sl.begin();
     int i = 0;
     while (it!=sl.end())
     {
@@ -297,7 +297,7 @@ uint16_t clusterserver::register_server(const std::string& ip,
   return cluster_id;
 }
 
-std::list<ip_port >& 
+std::vector<ip_port >& 
 clusterserver::get_server_list(const size_t cluster_id)
 {
   return ctbl[cluster_id];
@@ -306,4 +306,132 @@ clusterserver::get_server_list(const size_t cluster_id)
 pthread_t* clusterserver::get_thread_obj()
 {
   return &thread_obj;
+}
+
+Json::Value clusterserver::get_serialized_state()
+{
+  Json::Value result;
+  //serialize cluster table:
+  result["ctbl"] = Json::Value(Json::arrayValue);
+  int ctbl_len = ctbl.size();
+  for (int i=0; i<ctbl_len; i++)
+  {
+    result["ctbl"][i] = Json::Value(Json::arrayValue);
+    int clst_len = ctbl[i].size();
+    for (int j=0; j<clst_len; j++)
+    {
+      Json::Value val;
+      val["ip"] = ctbl[i][j].first;
+      val["port"] = ctbl[i][j].second;
+      result["ctbl"][i].append(val);
+    }
+  }
+  //serialize cluster min heap:
+  result["cmh"]["heap"] = Json::Value(Json::arrayValue);
+  result["cmh"]["cluster_heap_idx"] = Json::Value(Json::arrayValue);
+  int sz = cmh.cluster_heap_idx.size();
+  for (int i=0; i<sz; i++)
+  {
+    Json::Value val;
+    val["cluster_id"] = cmh.heap[i+1].first;
+    val["cluster_sz"] = cmh.heap[i+1].second;
+    result["cmh"]["heap"].append(val);
+    val.clear();
+    val = cmh.cluster_heap_idx[i];
+    result["cmh"]["cluster_heap_idx"].append(val);
+  }
+  //serialize leveldb server to cluster id table:
+  result["ldbsvr_cluster_map"] = Json::Value(Json::arrayValue);
+  std::map<ip_port, uint16_t>::iterator itr = ldbsvr_cluster_map.begin();
+  while (itr!=ldbsvr_cluster_map.end())
+  {
+    Json::Value val;
+    val["ip"] = itr->first.first;
+    val["port"] = itr->first.second;
+    val["cluster_id"] = itr->second;
+    result["ldbsvr_cluster_map"].append(val);
+    itr++;
+  }
+  return result;
+}
+
+/*
+queries an existing gateway server about cluster server configuration,
+then update itself.
+i.e. deserialization routine with respect to get_serialized_state().
+*/
+void 
+clusterserver::join_cluster(std::string& joinip, uint16_t joinport)
+{
+  client clt(joinip.c_str(), joinport);
+  Json::Value root;
+  root["req_type"] = "join_gateway";
+  Json::StyledWriter writer;
+  std::string outputConfig = writer.write(root);
+  std::string reply = clt.sendstring(outputConfig.c_str());
+  std::cout<<"join gateway cluster response: "<<reply<<std::endl;
+  //reconstruct cluster:
+  Json::Reader reader;
+  root.clear();
+  if (!reader.parse(reply,root))
+  {
+    std::cerr<<"failed to parse cluster server config response"
+             <<std::endl;
+    exit(1);
+  }
+  root = root["result"];
+  //update ctbl: 
+  //note we do not clear ctbl because it's always size MAX_CLUSTER
+  int i = 0;
+  for (Json::ValueIterator itr1 = root["ctbl"].begin();
+       itr1!=root["ctbl"].end(); itr1++)
+  {
+    Json::Value& vec = *itr1;
+    ctbl[i].clear();
+    for (Json::ValueIterator itr2 = vec.begin();
+         itr2 != vec.end(); itr2++)
+    {
+      ctbl[i].push_back(ip_port((*itr2)["ip"].asString(),
+                                (*itr2)["port"].asUInt()));
+    }
+    i++;
+  }
+  //update cluster min heap:
+  cmh.heap.clear();
+  cmh.heap.push_back(cluster_id_sz());
+  cmh.cluster_heap_idx.clear();
+  for (Json::ValueIterator itr1 = root["cmh"]["heap"].begin();
+       itr1!=root["cmh"]["heap"].end(); itr1++)
+  {
+    cmh.heap.push_back(cluster_id_sz((*itr1)["cluster_id"].asUInt(),
+                                     (*itr1)["cluster_sz"].asUInt()));
+  }
+  Json::Value& chiref = root["cmh"]["cluster_heap_idx"];
+  int chirefsz = chiref.size();
+  for (i=0; i<chirefsz; i++)
+  {
+    cmh.cluster_heap_idx.push_back(chiref[i].asUInt());
+  }
+  //update ldbsvr cluster map:
+  ldbsvr_cluster_map.clear();
+  for (Json::ValueIterator itr1 = 
+         root["ldbsvr_cluster_map"].begin();
+       itr1!=root["ldbsvr_cluster_map"].end(); 
+       itr1++)
+  {
+    cmh.heap.push_back(cluster_id_sz((*itr1)["cluster_id"].asUInt(),
+                                     (*itr1)["cluster_sz"].asUInt()));
+    ldbsvr_cluster_map.insert(
+      std::pair<ip_port,uint16_t>(
+        ip_port( (*itr1)["ip"].asString(),(*itr1)["port"].asUInt() ),
+        (*itr1)["cluster_id"].asUInt()
+                                 )
+                             );
+  }
+  //end communication:
+  root.clear();
+  root["req_type"] = "exit";
+  outputConfig = writer.write(root);
+  reply = clt.sendstring(outputConfig.c_str());
+  std::cout<<"reply="<<reply<<std::endl;
 }

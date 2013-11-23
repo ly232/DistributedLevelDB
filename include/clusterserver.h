@@ -10,6 +10,12 @@
 #include "server.h"
 #endif
 
+#ifndef _client_h
+#include "client.h"
+#endif
+
+#include <jsoncpp/json.h>
+
 /*
 cluster min heap is designed for cluster manager
 to keep track of the current smallest cluster,
@@ -29,8 +35,10 @@ public:
   virtual void requestHandler(int clfd);
   virtual ~clusterserver();
   pthread_t* get_thread_obj();
-  std::list<ip_port>& 
+  std::vector<ip_port>& 
     get_server_list(const size_t cluster_id);
+  Json::Value get_serialized_state();
+  void join_cluster(std::string& joinip, uint16_t joinport);
 private:
 
   struct cluster_min_heap
@@ -38,12 +46,11 @@ private:
     cluster_min_heap();
     void changesz(uint16_t cluster_id, uint16_t cluster_sz);
     uint16_t get_min_cluster_id();
-    std::vector<cluster_id_sz > heap;
+    std::vector<cluster_id_sz> heap;
     std::vector<int> cluster_heap_idx; //index for heap idx of a cluster
   };
-
-  //std::vector<std::list<server_address> > 
-  std::vector<std::list<ip_port> >
+     
+  std::vector<std::vector<ip_port> >
     ctbl; //cluster table, maps cluster id to server list
   
   pthread_t thread_obj;

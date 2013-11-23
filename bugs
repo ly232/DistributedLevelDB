@@ -1,1 +1,3 @@
 1. if some clusters do not have any leveldb server, then a client request whose key hashes into one of those empty clusters will hang the system.
+2. cluster server index data structures all need synchronization protection. e.g. when multiple new leveldb servers join, there's race condition.
+3. need distributed synchronization among all cluster servers accross all gateway servers, since by design we require that all gateway server's cluster servers are consistent at all time. maybe introduce some broadcast mechanism when new gateway server joins?

@@ -199,14 +199,29 @@ void* gateserver::recv_thread(void* arg)
   }
   std::string req_type = root["req_type"].asString();
   if (req_type=="exit")
-  {
-    pthread_mutex_lock(&socket_mutex);
+  { //leveldb server requests to exit cluster
+    //pthread_mutex_lock(&socket_mutex);
+    //client_exit doesn't seem to need sync protection, since 
+    //only recv thread is accessing it...
     *client_exit = true;
-    pthread_mutex_unlock(&socket_mutex);
+    //pthread_mutex_unlock(&socket_mutex);
     Json::StyledWriter writer;
     root.clear();
     root["status"] = "OK";
     root["result"] = "";
+    if (pthread_mutex_lock(&cv_mutex)!=0) throw THREAD_ERROR;
+    *ackmsg = writer.write(root);
+    if (pthread_mutex_unlock(&cv_mutex)!=0) throw THREAD_ERROR;
+    if (pthread_cond_signal(&cv)!=0) throw THREAD_ERROR;
+    return 0;
+  }
+  if (req_type=="join_gateway")
+  { //a new gateway server requests to join gateway servers cluster.
+    //will reply with cluster server configuration.
+    Json::StyledWriter writer;
+    root.clear();
+    root["status"] = "OK";
+    root["result"] = gatesvr->cs->get_serialized_state();
     if (pthread_mutex_lock(&cv_mutex)!=0) throw THREAD_ERROR;
     *ackmsg = writer.write(root);
     if (pthread_mutex_unlock(&cv_mutex)!=0) throw THREAD_ERROR;
@@ -224,9 +239,9 @@ void* gateserver::recv_thread(void* arg)
   std::string ldback;
   size_t cluster_id = hash(key);
 //std::cout<<"clusterid="<<cluster_id<<std::endl;
-  std::list<ip_port >& svrlst = 
+  std::vector<ip_port >& svrlst = 
     gatesvr->cs->get_server_list(cluster_id);
-  std::list<ip_port >::iterator itr 
+  std::vector<ip_port >::iterator itr 
     = svrlst.begin();
 //std::cout<<"svrlst.size()="<<svrlst.size()<<std::endl;
 if (gatesvr->sync_client)
@@ -351,5 +366,11 @@ void* gateserver::cleanup_thread_handler(void* arg)
   }
   delete client_vec;
   delete ldback_vec;
+}
+
+void 
+gateserver::join_cluster(std::string& joinip, uint16_t joinport)
+{
+  cs->join_cluster(joinip, joinport);
 }
 
