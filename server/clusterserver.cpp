@@ -72,15 +72,26 @@ uint16_t clusterserver::cluster_min_heap::get_min_cluster_id()
 clusterserver::clusterserver(const uint16_t port, 
 			     const char* ip)
   :server(port, ip),
-   ctbl(MAX_CLUSTER)
+   ctbl(MAX_CLUSTER),
+   seqnum(0)
 {
   std::cout<<"starting cluster server with ip: "
 	   <<std::string(ip)<<", port: "<<port<<std::endl;
+  pthread_mutex_init(&idx_lock, NULL);
+  //pthread_mutex_init(&conntbl_lock, NULL);
+  existing_cs_set.insert(std::pair<ip_port,bool>(
+    ip_port(getip(),getport()), true
+  ));
 }
 
 clusterserver::~clusterserver()
 {
-  
+  ip_port dummy;
+  Json::Value msg;
+  msg["req_type"] = "clusterserver_leave";
+  msg["ip"] = getip();
+  msg["port"] = getport();
+  broadcast(dummy,msg);
 }
 
 void clusterserver::requestHandler(int clfd)
@@ -116,7 +127,7 @@ void* clusterserver::main_thread(void* arg)
     thread_arg.push_back((void*)so);
     thread_arg.push_back((void*)replymsg);
     thread_arg.push_back((void*)cs);
-  
+
     if (pthread_create(&so->_thread_obj_arr[0], 
 		       0, 
 		       &recv_thread, 
@@ -136,12 +147,15 @@ void* clusterserver::main_thread(void* arg)
 
     delete so;
     delete replymsg;
+  delete (std::vector<void*>*)arg;
+  //TODO: since we now have broadcast, we should not close sock here...
+  //      we'll close at end of send thread
 
   delete clfdptr;
-  delete (std::vector<void*>*)arg;
-
+/*
   if (close(clfd)<0)
     throw SOCKET_CLOSE_ERROR;
+*/
   return 0;
 }
 
@@ -174,14 +188,17 @@ void* clusterserver::send_thread(void* arg)
     rmsz -= byte_sent;
     resp += byte_sent;
   }
-
+  //this is the end of main thread. so socket is no longer needed. close.
+  if (close(clfd)<0)
+    throw SOCKET_CLOSE_ERROR;
   return 0;
 }
 
 //recv_thread can receive either:
-//  1. request from leveldb to join cluster, or
+//  1. request from leveldb to join cluster
 //  2. request from gateserver to get cluster list give a search key
-//in both cases, the request must be in json format.
+//  3. request from another clusterserver to join cluster
+//in all cases, the request must be in json format.
 void* clusterserver::recv_thread(void* arg)
 {
   std::vector<void*>& argv = *(std::vector<void*>*)arg;
@@ -238,36 +255,60 @@ void clusterserver::process_cluster_request(std::string& request,
 		 req_type.end(), 
 		 req_type.begin(), 
 		 ::tolower);
-  if (req_type=="join")
-  { //TODO: need sync protection on ctbl, cmh, and ldbsvr_cluster_map
+  if (req_type=="leveldbserver_join")
+  {
     std::string ip = root["req_args"]["ip"].asString();
     uint16_t port = (uint16_t)root["req_args"]["port"].asInt();
+    if (pthread_mutex_lock(&cs->idx_lock)!=0) throw THREAD_ERROR;
     uint16_t cluster_id = cs->register_server(ip,port);
+    cs->seqnum++;
     cs->ldbsvr_cluster_map[ip_port(ip,port)] = cluster_id;
+    if (pthread_mutex_unlock(&cs->idx_lock)!=0) throw THREAD_ERROR;
     root.clear();
     root["result"] = "ok";
     root["cluster_id"] = cluster_id;
+    ip_port exclude; //empty pair: don't exclude anyone
+    cs->broadcast_update_cluster_state(exclude);
   }
-  else if (req_type=="leave")
-  { //TODO: need sync protection on ctbl, cmh, and ldbsvr_cluster_map
+  else if (req_type=="leveldbserver_leave")
+  {
     std::string ip = root["req_args"]["ip"].asString();
     uint16_t port = (uint16_t)root["req_args"]["port"].asInt();
+    bool updateinfo = false;
     root.clear();
     ip_port ldbsvr_id = ip_port(ip,port);
+    if (pthread_mutex_lock(&cs->idx_lock)!=0) throw THREAD_ERROR;
     std::map<ip_port, uint16_t>::iterator mapitr = 
         cs->ldbsvr_cluster_map.find(ldbsvr_id);
     if (mapitr==cs->ldbsvr_cluster_map.end()) root["result"] = "";
     else
     {
       root["result"] = "ok";
+      cs->ctbl[mapitr->second].erase(
+        std::find(cs->ctbl[mapitr->second].begin(),
+                  cs->ctbl[mapitr->second].end(),
+                  mapitr->first)
+      );
+      cs->cmh.changesz(mapitr->second,
+        cs->cmh.heap[cs->cmh.cluster_heap_idx[mapitr->second]].second-1);
       cs->ldbsvr_cluster_map.erase(mapitr);
+      cs->seqnum++;
+      updateinfo = true;
+    }
+    if (pthread_mutex_unlock(&cs->idx_lock)!=0) throw THREAD_ERROR;
+    if (updateinfo)
+    {
+      ip_port exclude; //empty pair: don't exclude anyone
+      cs->broadcast_update_cluster_state(exclude);
     }
   }
   else if (req_type=="get_cluster_list")
   {
     std::string key = root["req_args"]["key"].asString();
     root.clear();
+    if (pthread_mutex_lock(&cs->idx_lock)!=0) throw THREAD_ERROR;
     std::vector<ip_port>& sl = cs->get_server_list(hash(key));
+    if (pthread_mutex_unlock(&cs->idx_lock)!=0) throw THREAD_ERROR;
     std::vector<ip_port>::iterator it = sl.begin();
     int i = 0;
     while (it!=sl.end())
@@ -277,7 +318,43 @@ void clusterserver::process_cluster_request(std::string& request,
       it++;
     }
   }
-  else
+  else if (req_type=="broadcast_update_cluster_state")
+  {
+    unsigned int remote_seqnum = root["req_args"]["seqnum"].asUInt();
+    if (pthread_mutex_lock(&cs->idx_lock)!=0) throw THREAD_ERROR;
+    //if (remote_seqnum > cs->seqnum) //TODO: use timestamp
+    {
+      cs->update_cluster_state(root["req_args"]);
+    }
+    if (pthread_mutex_unlock(&cs->idx_lock)!=0) throw THREAD_ERROR;
+    root.clear();
+    root["status"] = "ok";
+  }
+  else if (req_type=="clusterserver_join")
+  { //a new cluster server requests to join cluster.
+    //update existing cluster server set by adding remote cs to set:
+    ip_port peeripport(root["ip"].asString(), root["port"].asUInt());
+    if (pthread_mutex_lock(&cs->idx_lock)!=0) throw THREAD_ERROR;
+    cs->existing_cs_set[peeripport] = true;
+    if (pthread_mutex_unlock(&cs->idx_lock)!=0) throw THREAD_ERROR;
+    //now process request:
+    Json::StyledWriter writer;
+    root.clear();
+    root["status"] = "OK";
+    root["result"] = cs->get_serialized_state();
+    //broadcast to all clusterservers about the newly joined cs:
+    cs->broadcast_update_cluster_state(peeripport);
+  }
+  else if (req_type=="clusterserver_leave")
+  {
+    ip_port peeripport(root["ip"].asString(), root["port"].asUInt());
+    if (pthread_mutex_lock(&cs->idx_lock)!=0) throw THREAD_ERROR;
+    cs->existing_cs_set.erase(
+      cs->existing_cs_set.find(peeripport)
+    );
+    if (pthread_mutex_unlock(&cs->idx_lock)!=0) throw THREAD_ERROR;
+  }
+  else //unrecognized request
   {
     root["result"] = "";
   }
@@ -310,6 +387,7 @@ pthread_t* clusterserver::get_thread_obj()
 
 Json::Value clusterserver::get_serialized_state()
 {
+  if (pthread_mutex_lock(&idx_lock)!=0) throw THREAD_ERROR;
   Json::Value result;
   //serialize cluster table:
   result["ctbl"] = Json::Value(Json::arrayValue);
@@ -352,34 +430,28 @@ Json::Value clusterserver::get_serialized_state()
     result["ldbsvr_cluster_map"].append(val);
     itr++;
   }
+  //serialize existing_cs_set:
+  result["existing_cs_set"] = Json::Value(Json::arrayValue);
+  std::map<ip_port,bool>::iterator cssetitr = existing_cs_set.begin();
+  while (cssetitr!=existing_cs_set.end())
+  {
+    Json::Value val;
+    val["ip"] = cssetitr->first.first;
+    val["port"] = cssetitr->first.second;
+//std::cout<<"serialized port: "<<cssetitr->first.second<<std::endl;
+    result["existing_cs_set"].append(val);
+    cssetitr++;
+  }
+  //serialize seqnum:
+  result["seqnum"] = seqnum;
+  if (pthread_mutex_unlock(&idx_lock)!=0) throw THREAD_ERROR;
   return result;
 }
 
-/*
-queries an existing gateway server about cluster server configuration,
-then update itself.
-i.e. deserialization routine with respect to get_serialized_state().
-*/
-void 
-clusterserver::join_cluster(std::string& joinip, uint16_t joinport)
+//deserilization counterpart to get_serialized_state
+void
+clusterserver::update_cluster_state(const Json::Value& root)
 {
-  client clt(joinip.c_str(), joinport);
-  Json::Value root;
-  root["req_type"] = "join_gateway";
-  Json::StyledWriter writer;
-  std::string outputConfig = writer.write(root);
-  std::string reply = clt.sendstring(outputConfig.c_str());
-  std::cout<<"join gateway cluster response: "<<reply<<std::endl;
-  //reconstruct cluster:
-  Json::Reader reader;
-  root.clear();
-  if (!reader.parse(reply,root))
-  {
-    std::cerr<<"failed to parse cluster server config response"
-             <<std::endl;
-    exit(1);
-  }
-  root = root["result"];
   //update ctbl: 
   //note we do not clear ctbl because it's always size MAX_CLUSTER
   int i = 0;
@@ -406,7 +478,7 @@ clusterserver::join_cluster(std::string& joinip, uint16_t joinport)
     cmh.heap.push_back(cluster_id_sz((*itr1)["cluster_id"].asUInt(),
                                      (*itr1)["cluster_sz"].asUInt()));
   }
-  Json::Value& chiref = root["cmh"]["cluster_heap_idx"];
+  const Json::Value& chiref = root["cmh"]["cluster_heap_idx"];
   int chirefsz = chiref.size();
   for (i=0; i<chirefsz; i++)
   {
@@ -428,10 +500,144 @@ clusterserver::join_cluster(std::string& joinip, uint16_t joinport)
                                  )
                              );
   }
-  //end communication:
-  root.clear();
-  root["req_type"] = "exit";
-  outputConfig = writer.write(root);
-  reply = clt.sendstring(outputConfig.c_str());
-  std::cout<<"reply="<<reply<<std::endl;
+  //update existing_cs_set:
+  existing_cs_set.clear();
+  for (Json::ValueIterator itr1 = 
+         root["existing_cs_set"].begin();
+       itr1!=root["existing_cs_set"].end(); 
+       itr1++)
+  {
+    existing_cs_set.insert(
+      std::pair<ip_port,bool>(
+        ip_port((*itr1)["ip"].asString(),
+                (*itr1)["port"].asUInt()),
+        true
+      )
+    );
+  }
+  //update seqnum:
+  seqnum = root["seqnum"].asUInt()+1;
 }
+
+/*
+queries an existing gateway server about cluster server configuration,
+then update itself by calling update_cluster_state().
+*/
+void 
+clusterserver::join_cluster(std::string& joinip, uint16_t joinport)
+{
+  //client* cltp = NULL;
+  //ip_port ipport = ip_port(joinip, joinport);
+  //create_client(cltp, ipport);
+  client clt(joinip.c_str(),joinport);
+  Json::Value root;
+  root["req_type"] = "clusterserver_join";
+  root["ip"] = getip();
+  root["port"] = getport();
+  Json::StyledWriter writer;
+  std::string outputConfig = writer.write(root);
+  std::string reply = clt.sendstring(outputConfig.c_str());
+  std::cout<<"clusterserver join cluster response: "<<reply<<std::endl;
+
+  //reconstruct cluster:
+  Json::Reader reader;
+  root.clear();
+  if (!reader.parse(reply,root))
+  {
+    std::cerr<<"failed to parse cluster server config response"
+             <<std::endl;
+    exit(1);
+  }
+  root = root["result"];
+  update_cluster_state(root);
+}
+
+/*
+for each cluster server in cs->existing_cs_set, this routine
+sends its cluster index data to each, along with its seqnum.
+the receiving cluster servers will update their indexing members 
+if received seqnum is greater than local seqnum
+*/
+void
+clusterserver::broadcast_update_cluster_state(const ip_port& peeripport)
+{
+  Json::Value msg;
+  msg["req_type"] = "broadcast_update_cluster_state";
+  msg["req_args"] = get_serialized_state();
+  broadcast(peeripport, msg);
+
+/*
+  std::map<ip_port,bool>::iterator itr = existing_cs_set.begin();
+  std::map<ip_port,bool>::iterator itr_end = existing_cs_set.end();
+  ip_port selfipport(getip(), getport());
+  while (itr!=itr_end)
+  {
+    if (itr->first==exclude ||  //do not broadcast to remote node
+        itr->first==selfipport) //do not broadcast to self
+    {
+      itr++; continue;
+    }
+    //client* cltp = NULL;
+    //create_client(cltp, itr->first);
+    client clt(itr->first.first.c_str(),itr->first.second);
+    Json::Value root;
+    root["req_type"] = "broadcast_update_cluster_state";
+    root["req_args"] = get_serialized_state();
+    Json::StyledWriter writer;
+    std::string outputConfig = writer.write(root);
+    clt.sendstring(outputConfig.c_str());
+    itr++;
+  }
+*/
+}
+
+void
+clusterserver::broadcast(const ip_port& exclude, 
+                         const Json::Value& msg)
+{
+  std::map<ip_port,bool>::iterator itr = existing_cs_set.begin();
+  std::map<ip_port,bool>::iterator itr_end = existing_cs_set.end();
+  ip_port selfipport(getip(), getport());
+  while (itr!=itr_end)
+  {
+    if (itr->first==exclude ||  //do not broadcast to remote node
+        itr->first==selfipport) //do not broadcast to self
+    {
+      itr++; continue;
+    }
+    //below might be used in future if we decide to keep cs-to-cs conn
+    //client* cltp = NULL;
+    //create_client(cltp, itr->first);
+    client clt(itr->first.first.c_str(),itr->first.second);
+    Json::StyledWriter writer;
+    std::string outputConfig = writer.write(msg);
+    clt.sendstring(outputConfig.c_str());
+    itr++;
+  }
+}
+
+/*
+singleton helper method to return a connection descriptor.
+if conn already exists, return existing info.
+else, make new connection and notify caller to delete ptr on heap.
+void
+clusterserver::create_client(client*& cltp, const ip_port& ipport)
+{
+  if (pthread_mutex_lock(&conntbl_lock)!=0) throw THREAD_ERROR;
+  std::map<ip_port, client*>::iterator conntbl_itr = 
+    connection_tbl.find(ipport);
+  if (conntbl_itr==connection_tbl.end())
+  {
+    cltp = new client(ipport.first.c_str(), ipport.second);
+
+    connection_tbl[ipport] = cltp;
+
+  }
+  else
+{
+
+    cltp = conntbl_itr->second;
+}
+  if (pthread_mutex_unlock(&conntbl_lock)!=0) throw THREAD_ERROR;
+}
+*/

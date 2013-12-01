@@ -1,11 +1,11 @@
 # gateway server:
 # first one defaults to cluster server port 9999
-# second one joins first gateway server
-# thrid one joins second gateway server
+# second one joins first gateway server's cluster server
+# thrid one joins second gateway server's cluster server
 # note cluster servers all have consisten state (i.e. same in-memory indexes)
 ./g.out
-./g.out --gsport 9997 --csport 9996 --joinip 192.168.88.144 --joinport 9999
-./g.out --gsport 9995 --csport 9994 --joinip 192.168.88.144 --joinport 9997
+./g.out --gsport 9997 --csport 9996 --joinip 192.168.88.144 --joinport 9998
+./g.out --gsport 9995 --csport 9994 --joinip 192.168.88.144 --joinport 9996
 
 # leveldb server:
 ./l.out --clusterport 9998 --selfport 8000 --clusterip 192.168.88.144

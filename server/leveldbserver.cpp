@@ -91,7 +91,7 @@ std::cout<<"calling join_cluster to ip "
   Json::Value root;
   Json::StyledWriter writer;
   Json::Reader reader;
-  root["req_type"] = "join";
+  root["req_type"] = "leveldbserver_join";
   root["req_args"]["ip"] = getip();
   root["req_args"]["port"] = getport();
   std::string request = writer.write(root);
@@ -115,7 +115,7 @@ std::cout<<"calling leave_cluster"<<std::endl;
   Json::Value root;
   Json::StyledWriter writer;
   Json::Reader reader;
-  root["req_type"] = "leave";
+  root["req_type"] = "leveldbserver_leave";
   root["req_args"]["ip"] = getip();
   root["req_args"]["port"] = getport();
   std::string request = writer.write(root);

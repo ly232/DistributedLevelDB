@@ -5,9 +5,18 @@
 #include <jsoncpp/json.h>
 using namespace std;
 
+gateserver* gs;
+
+void signal_callback_handler(int signum)
+{
+  delete gs;
+  exit(signum);
+}
+
 int main(int argc, char** argv)
 {
 try{
+  signal(SIGINT, signal_callback_handler);
   char* ip = NULL;//(argc>1)?argv[1]:NULL;
   uint16_t gsport = 9999; //gateway server port
   uint16_t csport = 9998; //cluster server port
@@ -37,19 +46,19 @@ try{
       continue;
     }
   }
-  gateserver gs(gsport, csport, ip); //gate svr port, cluster svr port
+  gs = new gateserver(gsport, csport, ip);
   cout<<"gateways server test"<<endl;
-  cout<<"hostname: "<<gs.getsvrname()<<endl;
-  cout<<"ip: "<<gs.getip()<<endl;
-  cout<<"port: "<<gs.getport()<<endl;
+  cout<<"hostname: "<<gs->getsvrname()<<endl;
+  cout<<"ip: "<<gs->getip()<<endl;
+  cout<<"port: "<<gs->getport()<<endl;
   if (joinip!="" && joinport) 
-    gs.join_cluster(joinip, joinport);
+    gs->join_cluster(joinip, joinport);
 
   while(true)
   {
-    int clfd = gs.accept_conn();
+    int clfd = gs->accept_conn();
     if (clfd<0) throw SOCKET_ACCEPT_ERROR;
-    gs.requestHandler(clfd);
+    gs->requestHandler(clfd);
   }
 } catch (int e) {
   std::cerr<<"e="<<e<<std::endl;

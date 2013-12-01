@@ -36,7 +36,8 @@ std::string client::sendstring(const char* str)
 {
   if (!goodconn)
   {
-    std::cerr<<"error: bad connection for client"<<std::endl;
+    std::cerr<<"error: bad connection for client. errno="
+             <<errno<<std::endl;
     return "connection error";
   }
 

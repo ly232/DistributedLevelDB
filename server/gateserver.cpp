@@ -215,9 +215,16 @@ void* gateserver::recv_thread(void* arg)
     if (pthread_cond_signal(&cv)!=0) throw THREAD_ERROR;
     return 0;
   }
+/*
   if (req_type=="join_gateway")
   { //a new gateway server requests to join gateway servers cluster.
     //will reply with cluster server configuration.
+
+    //update existing cluster server set by adding remote cs to set:
+    gatesvr->cs->insert_cs_set(root["ip"].asString().c_str(),
+                               root["port"].asUInt());
+
+    //now process request:
     Json::StyledWriter writer;
     root.clear();
     root["status"] = "OK";
@@ -226,8 +233,13 @@ void* gateserver::recv_thread(void* arg)
     *ackmsg = writer.write(root);
     if (pthread_mutex_unlock(&cv_mutex)!=0) throw THREAD_ERROR;
     if (pthread_cond_signal(&cv)!=0) throw THREAD_ERROR;
+
+    //broadcast to all other clusterservers about the newly joined cs:
+    gatesvr->cs->broadcast_update_cluster_state();
+
     return 0;
   }
+*/
   std::string sync = root["sync"].asString();
   (sync=="true")?gatesvr->setsync():gatesvr->setasync();
   // pick a leveldb server to forward request

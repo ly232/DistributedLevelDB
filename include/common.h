@@ -22,6 +22,7 @@
 #include <assert.h>
 #include <iostream>
 #include <pthread.h>
+#include <algorithm>
 #include <vector>
 #include <map>
 #include <queue>
