@@ -54,7 +54,7 @@
 #define THREAD_ERROR 11;
 #define DB_FAIL 12;
 #define CLUSTER_FAIL 13;
-//utility api's:
+//utility apis:
 inline size_t hash(std::string& s)
 {
   size_t len = s.length();

@@ -20,7 +20,6 @@ void clusterserver::cluster_min_heap::changesz(uint16_t cluster_id,
                                                uint16_t cluster_sz)
 {
   int chi = cluster_heap_idx[cluster_id];
-  assert(heap[chi].first==cluster_id);
   if (cluster_sz > heap[chi].second)
   { //increase size ==> percolate down
     heap[chi].second = cluster_sz;
@@ -72,8 +71,7 @@ uint16_t clusterserver::cluster_min_heap::get_min_cluster_id()
 clusterserver::clusterserver(const uint16_t port, 
 			     const char* ip)
   :server(port, ip),
-   ctbl(MAX_CLUSTER),
-   seqnum(0)
+   ctbl(MAX_CLUSTER)
 {
   std::cout<<"starting cluster server with ip: "
 	   <<std::string(ip)<<", port: "<<port<<std::endl;
@@ -82,6 +80,7 @@ clusterserver::clusterserver(const uint16_t port,
   existing_cs_set.insert(std::pair<ip_port,bool>(
     ip_port(getip(),getport()), true
   ));
+  time(&timestamp);
 }
 
 clusterserver::~clusterserver()
@@ -148,14 +147,10 @@ void* clusterserver::main_thread(void* arg)
     delete so;
     delete replymsg;
   delete (std::vector<void*>*)arg;
-  //TODO: since we now have broadcast, we should not close sock here...
-  //      we'll close at end of send thread
-
   delete clfdptr;
-/*
-  if (close(clfd)<0)
-    throw SOCKET_CLOSE_ERROR;
-*/
+  //NOTE: client socket descriptor is closed at send_thread.
+  //      this is to avoid a race condition when a new request
+  //      comes between end of send thread and socket close.
   return 0;
 }
 
@@ -261,7 +256,7 @@ void clusterserver::process_cluster_request(std::string& request,
     uint16_t port = (uint16_t)root["req_args"]["port"].asInt();
     if (pthread_mutex_lock(&cs->idx_lock)!=0) throw THREAD_ERROR;
     uint16_t cluster_id = cs->register_server(ip,port);
-    cs->seqnum++;
+    time(&cs->timestamp);
     cs->ldbsvr_cluster_map[ip_port(ip,port)] = cluster_id;
     if (pthread_mutex_unlock(&cs->idx_lock)!=0) throw THREAD_ERROR;
     root.clear();
@@ -292,7 +287,7 @@ void clusterserver::process_cluster_request(std::string& request,
       cs->cmh.changesz(mapitr->second,
         cs->cmh.heap[cs->cmh.cluster_heap_idx[mapitr->second]].second-1);
       cs->ldbsvr_cluster_map.erase(mapitr);
-      cs->seqnum++;
+      time(&cs->timestamp);
       updateinfo = true;
     }
     if (pthread_mutex_unlock(&cs->idx_lock)!=0) throw THREAD_ERROR;
@@ -320,9 +315,10 @@ void clusterserver::process_cluster_request(std::string& request,
   }
   else if (req_type=="broadcast_update_cluster_state")
   {
-    unsigned int remote_seqnum = root["req_args"]["seqnum"].asUInt();
+    time_t remote_ts = 
+      static_cast<time_t>(root["req_args"]["timestamp"].asDouble());
     if (pthread_mutex_lock(&cs->idx_lock)!=0) throw THREAD_ERROR;
-    //if (remote_seqnum > cs->seqnum) //TODO: use timestamp
+    if (difftime(remote_ts,cs->timestamp)>0)
     {
       cs->update_cluster_state(root["req_args"]);
     }
@@ -442,8 +438,8 @@ Json::Value clusterserver::get_serialized_state()
     result["existing_cs_set"].append(val);
     cssetitr++;
   }
-  //serialize seqnum:
-  result["seqnum"] = seqnum;
+  //serialize timestamp:
+  result["timestamp"] = static_cast<double>(timestamp);
   if (pthread_mutex_unlock(&idx_lock)!=0) throw THREAD_ERROR;
   return result;
 }
@@ -452,6 +448,7 @@ Json::Value clusterserver::get_serialized_state()
 void
 clusterserver::update_cluster_state(const Json::Value& root)
 {
+std::cout<<"update cluster state"<<std::endl;
   //update ctbl: 
   //note we do not clear ctbl because it's always size MAX_CLUSTER
   int i = 0;
@@ -515,8 +512,8 @@ clusterserver::update_cluster_state(const Json::Value& root)
       )
     );
   }
-  //update seqnum:
-  seqnum = root["seqnum"].asUInt()+1;
+  //update timestamp:
+  timestamp = static_cast<time_t>(root["timestamp"].asDouble());
 }
 
 /*
@@ -554,9 +551,9 @@ clusterserver::join_cluster(std::string& joinip, uint16_t joinport)
 
 /*
 for each cluster server in cs->existing_cs_set, this routine
-sends its cluster index data to each, along with its seqnum.
+sends its cluster index data to each, along with its timestamp.
 the receiving cluster servers will update their indexing members 
-if received seqnum is greater than local seqnum
+if received timestamp is greater than local timestamp
 */
 void
 clusterserver::broadcast_update_cluster_state(const ip_port& peeripport)

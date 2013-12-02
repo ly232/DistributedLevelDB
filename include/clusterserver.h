@@ -70,7 +70,7 @@ private:
 
   uint16_t register_server(const std::string& ip, const uint16_t port);
 
-  unsigned int seqnum; //TODO: replace this with timestamp
+  time_t timestamp;
   std::map<ip_port,bool> existing_cs_set;
   void broadcast_update_cluster_state(const ip_port& peeripport);
   void broadcast(const ip_port& exclude, const Json::Value& msg);

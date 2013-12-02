@@ -9,6 +9,9 @@
 
 # leveldb server:
 ./l.out --clusterport 9998 --selfport 8000 --clusterip 192.168.88.144
+./l.out --clusterport 9996 --selfport 8001 --clusterip 192.168.88.144 --dbdir /home/ly232/levdb/db1
+./l.out --clusterport 9994 --selfport 8002 --clusterip 192.168.88.144 --dbdir /home/ly232/levdb/db2
+./l.out --clusterport 9994 --selfport 8003 --clusterip 192.168.88.144 --dbdir /home/ly232/levdb/db3
 
 # sample test client:
 ./c.out 192.168.88.144 9999
