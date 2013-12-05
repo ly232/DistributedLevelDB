@@ -31,7 +31,8 @@ typedef struct cluster_min_heap cluster_min_heap;
 class clusterserver : public server
 {
 public:
-  clusterserver(const uint16_t port, const char* ip);
+  clusterserver(const uint16_t port, const char* ip, 
+                bool master = false); //master=true iff send heartbeat
   virtual void requestHandler(int clfd);
   virtual ~clusterserver();
   pthread_t* get_thread_obj();
@@ -75,6 +76,9 @@ private:
   void broadcast_update_cluster_state(const ip_port& peeripport);
   void broadcast(const ip_port& exclude, const Json::Value& msg);
   void update_cluster_state(const Json::Value& root);
+
+  static void heartbeat_handler(int signum);
+
 /*
 //we might reuse the following code later, if we decide to maintain 
 //cluster-to-cluster connection sockets.

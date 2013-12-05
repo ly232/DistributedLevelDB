@@ -46,7 +46,8 @@ try{
       continue;
     }
   }
-  gs = new gateserver(gsport, csport, ip);
+  bool master = (joinip=="" && !joinport);
+  gs = new gateserver(gsport, csport, ip, master);
   cout<<"gateways server test"<<endl;
   cout<<"hostname: "<<gs->getsvrname()<<endl;
   cout<<"ip: "<<gs->getip()<<endl;

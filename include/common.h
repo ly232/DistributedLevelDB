@@ -29,6 +29,7 @@
 #include <list>
 #include <ctime>
 //constants:
+#define HEARTBEAT_RATE 10 //send heartbeat every 10 second
 #define BUF_SIZE 99999
 #define MAX_CONN 5
 #define MAX_CLUSTER 2 //max number of leveldb server clusters

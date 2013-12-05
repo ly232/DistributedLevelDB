@@ -19,7 +19,9 @@ class gateserver : public server
 public:
   gateserver(const uint16_t gsport, 
 	     const uint16_t csport,
-	     const char* ip = NULL);
+	     const char* ip = NULL,
+             bool master = false //master=true iff send heartbeat
+            );
   virtual void requestHandler(int clfd);
   virtual ~gateserver();
   void setsync(){sync_client = true;};

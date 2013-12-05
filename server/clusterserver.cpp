@@ -5,6 +5,41 @@
 #include <jsoncpp/json.h>
 #include <algorithm>
 
+clusterserver* cshdl; //handle for static clusterserver methods
+
+void clusterserver::heartbeat_handler(int signum)
+{
+  if (signum==SIGALRM)
+  {
+    std::cout<<"will send heartbeat"<<std::endl;
+    Json::Value hbmsg; //dummy msg. ldbsvr does not explicitly reply.
+    //heartbeat to leveldb servers:
+    std::map<ip_port, uint16_t>::iterator ldbitr = 
+      cshdl->ldbsvr_cluster_map.begin();
+    std::map<ip_port, uint16_t>::iterator lcmend = 
+      cshdl->ldbsvr_cluster_map.end();
+    while (ldbitr!=lcmend)
+    {
+      client clt(ldbitr->first.first.c_str(),ldbitr->first.second);
+      Json::StyledWriter writer;
+      std::string outputConfig = writer.write(hbmsg);
+      clt.sendstring(outputConfig.c_str());
+      if (errno)
+      {
+        //peer did not respond. assume peer is dead, and notify other cs
+        cshdl->ldbsvr_cluster_map.erase(ldbitr);
+        time(&cshdl->timestamp);
+        ip_port dummy_exclude;
+        cshdl->broadcast_update_cluster_state(dummy_exclude);
+        errno = 0; //clear error
+      }
+      ldbitr++;
+    }
+    //TODO: heartbeat to cluster servers:
+  }
+  alarm(HEARTBEAT_RATE);
+}
+
 clusterserver::cluster_min_heap::cluster_min_heap()
 {
   cluster_id_sz cis;
@@ -69,10 +104,11 @@ uint16_t clusterserver::cluster_min_heap::get_min_cluster_id()
 };
 
 clusterserver::clusterserver(const uint16_t port, 
-			     const char* ip)
+			     const char* ip, bool master)
   :server(port, ip),
    ctbl(MAX_CLUSTER)
 {
+  cshdl = this;
   std::cout<<"starting cluster server with ip: "
 	   <<std::string(ip)<<", port: "<<port<<std::endl;
   pthread_mutex_init(&idx_lock, NULL);
@@ -81,6 +117,12 @@ clusterserver::clusterserver(const uint16_t port,
     ip_port(getip(),getport()), true
   ));
   time(&timestamp);
+  if (master)
+  {
+    //register alarm to send heartbeat
+    alarm(HEARTBEAT_RATE);
+    signal(SIGALRM, heartbeat_handler);
+  }
 }
 
 clusterserver::~clusterserver()
@@ -262,7 +304,7 @@ void clusterserver::process_cluster_request(std::string& request,
     root.clear();
     root["result"] = "ok";
     root["cluster_id"] = cluster_id;
-    ip_port exclude; //empty pair: don't exclude anyone
+    ip_port exclude; //empty exclude--broadcast to every cs about ldb
     cs->broadcast_update_cluster_state(exclude);
   }
   else if (req_type=="leveldbserver_leave")
@@ -345,9 +387,7 @@ void clusterserver::process_cluster_request(std::string& request,
   {
     ip_port peeripport(root["ip"].asString(), root["port"].asUInt());
     if (pthread_mutex_lock(&cs->idx_lock)!=0) throw THREAD_ERROR;
-    cs->existing_cs_set.erase(
-      cs->existing_cs_set.find(peeripport)
-    );
+    cs->existing_cs_set.erase(peeripport);
     if (pthread_mutex_unlock(&cs->idx_lock)!=0) throw THREAD_ERROR;
   }
   else //unrecognized request

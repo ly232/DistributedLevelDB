@@ -17,12 +17,13 @@ void* gateserver::cluster_server_init(void* arg)
 
 gateserver::gateserver(const uint16_t gsport, 
 		       const uint16_t csport, 
-		       const char* ip)
+		       const char* ip,
+                       bool master)
   :server(gsport, ip),sync_client(false)
 {
   //start cluster server to 
   //monitor leveldb servers join/leave cluster
-  cs = new clusterserver(csport, getip().c_str());
+  cs = new clusterserver(csport, getip().c_str(), master);
   if (pthread_create(cs->get_thread_obj(), 
 		     0, 
 		     &cluster_server_init, 
@@ -42,7 +43,7 @@ void* gateserver::main_thread(void* arg)
    * main thread handles a client request by 3 phases:
    * 1) spawn a recv_thread to read the entire json request
    * 2) identify a leveldb server and send request to that server
-   * 3) wait for leveldb server's response,
+   * 3) wait for leveldb servgger's response,
    *    then pass that response to client
    */
   std::vector<void*>* argv = (std::vector<void*>*)arg;
@@ -215,31 +216,7 @@ void* gateserver::recv_thread(void* arg)
     if (pthread_cond_signal(&cv)!=0) throw THREAD_ERROR;
     return 0;
   }
-/*
-  if (req_type=="join_gateway")
-  { //a new gateway server requests to join gateway servers cluster.
-    //will reply with cluster server configuration.
 
-    //update existing cluster server set by adding remote cs to set:
-    gatesvr->cs->insert_cs_set(root["ip"].asString().c_str(),
-                               root["port"].asUInt());
-
-    //now process request:
-    Json::StyledWriter writer;
-    root.clear();
-    root["status"] = "OK";
-    root["result"] = gatesvr->cs->get_serialized_state();
-    if (pthread_mutex_lock(&cv_mutex)!=0) throw THREAD_ERROR;
-    *ackmsg = writer.write(root);
-    if (pthread_mutex_unlock(&cv_mutex)!=0) throw THREAD_ERROR;
-    if (pthread_cond_signal(&cv)!=0) throw THREAD_ERROR;
-
-    //broadcast to all other clusterservers about the newly joined cs:
-    gatesvr->cs->broadcast_update_cluster_state();
-
-    return 0;
-  }
-*/
   std::string sync = root["sync"].asString();
   (sync=="true")?gatesvr->setsync():gatesvr->setasync();
   // pick a leveldb server to forward request
