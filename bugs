@@ -2,3 +2,7 @@
 [fixed] 2. cluster server index data structures all need synchronization protection. e.g. when multiple new leveldb servers join, there's race condition.
 3. need distributed synchronization among all cluster servers accross all gateway servers, since by design we require that all gateway server's cluster servers are consistent at all time. maybe introduce some broadcast mechanism when new gateway server joins?
 4. if a gateway server quits, then a child leveldb server quites, ldbsvr quit callback routine has no one to send msg.
+5. client c.out hangs if:
+   a) req key hashes into an empty cluster (not really a bug...it's by design)
+   b) if client send in async mode, some ls may not get the data and quit. if
+      that server rejoins, it maynot be able to reply. fix: chord for cluster.

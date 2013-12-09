@@ -40,6 +40,9 @@ public:
     get_server_list(const size_t cluster_id);
   Json::Value get_serialized_state();
   void join_cluster(std::string& joinip, uint16_t joinport);
+  //error handlers:
+  void hbcserrhdlr(ip_port* dead_cs);
+  void hblserrhdlr(ip_port* dead_ls);
 private:
 
   struct cluster_min_heap
@@ -53,13 +56,19 @@ private:
   
   pthread_t thread_obj;
 
+  /////////////////////////////////////////
   //in-memory indexing data structures
   std::vector<std::vector<ip_port> >
     ctbl; //cluster table, maps cluster id to ldb server list
   cluster_min_heap cmh; //to dynamically find min cluster id
   std::map<ip_port, uint16_t> 
     ldbsvr_cluster_map; //ldbsvr table, maps ldbsvr to cluster id
+  std::map<ip_port,bool> existing_cs_set; //not using vector to improve 
+                                          //efficiency.
+                                          //ideally hash set is better,
+                                          //but we don't have it now.
   pthread_mutex_t idx_lock;
+  /////////////////////////////////////////
 
   static void* main_thread(void*);
   static void* send_thread(void*);
@@ -72,9 +81,13 @@ private:
   uint16_t register_server(const std::string& ip, const uint16_t port);
 
   time_t timestamp;
-  std::map<ip_port,bool> existing_cs_set;
   void broadcast_update_cluster_state(const ip_port& peeripport);
-  void broadcast(const ip_port& exclude, const Json::Value& msg);
+  void broadcast(const ip_port& exclude, 
+                 const Json::Value& msg,
+                 void (*errhdlr)(void*) = NULL);
+  void broadcast(const std::vector<ip_port>& receiver_set,
+                 const Json::Value& msg,
+                 void (*errhdlr)(void*) = NULL);
   void update_cluster_state(const Json::Value& root);
 
   static void heartbeat_handler(int signum);

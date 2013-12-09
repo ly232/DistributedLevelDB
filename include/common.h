@@ -32,7 +32,7 @@
 #define HEARTBEAT_RATE 10 //send heartbeat every 10 second
 #define BUF_SIZE 99999
 #define MAX_CONN 5
-#define MAX_CLUSTER 2 //max number of leveldb server clusters
+#define MAX_CLUSTER 3 //max number of leveldb server clusters
                       //a cluster is a set of leveldb servers
                       //a tuple (k,v) belongs to cluster hash(k) only
                       //note that hash(k) must be 

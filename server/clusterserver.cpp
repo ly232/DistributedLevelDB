@@ -7,35 +7,81 @@
 
 clusterserver* cshdl; //handle for static clusterserver methods
 
+/*
+error handler for master cs sending heartbeat to cluster servers.
+will remove the failed cluster server from local index.
+*/
+void _hbcserrhdlr(void* arg)
+{
+  if (!arg) return;
+  cshdl->hbcserrhdlr((ip_port*) arg);
+}
+void clusterserver::hbcserrhdlr(ip_port* dead_cs)
+{
+  if (pthread_mutex_lock(&idx_lock)!=0) throw THREAD_ERROR;
+  existing_cs_set.erase(*dead_cs);
+  if (pthread_mutex_unlock(&idx_lock)!=0) throw THREAD_ERROR;
+}
+
+/*
+error handler for master cs sending heartbeat to leveldb servers.
+will remove the failed leveldb server from local index.
+*/
+void _hblserrhdlr(void* arg)
+{
+  if (!arg) return;
+  cshdl->hblserrhdlr((ip_port*) arg);
+}
+void clusterserver::hblserrhdlr(ip_port* dead_ls)
+{
+  if (pthread_mutex_lock(&idx_lock)!=0) throw THREAD_ERROR;
+  uint16_t cluster_id = ldbsvr_cluster_map[*dead_ls];
+  std::vector<ip_port>::iterator itr = ctbl[cluster_id].begin();
+  for (; itr!=ctbl[cluster_id].end(); itr++){
+    if (*itr==*dead_ls) 
+    {
+      ctbl[cluster_id].erase(itr);
+      break;
+    }
+  }
+  cmh.changesz(
+                cluster_id,
+                cmh.heap[
+                          cmh.cluster_heap_idx[cluster_id]
+                        ].second-1
+              );
+  ldbsvr_cluster_map.erase(*dead_ls);
+  if (pthread_mutex_unlock(&idx_lock)!=0) throw THREAD_ERROR;
+}
+
 void clusterserver::heartbeat_handler(int signum)
 {
   if (signum==SIGALRM)
   {
     std::cout<<"will send heartbeat"<<std::endl;
     Json::Value hbmsg; //dummy msg. ldbsvr does not explicitly reply.
+    hbmsg["req_type"] = "heartbeat";
     //heartbeat to leveldb servers:
     std::map<ip_port, uint16_t>::iterator ldbitr = 
       cshdl->ldbsvr_cluster_map.begin();
     std::map<ip_port, uint16_t>::iterator lcmend = 
       cshdl->ldbsvr_cluster_map.end();
+    std::vector<ip_port> ldbsvr_set;
     while (ldbitr!=lcmend)
     {
-      client clt(ldbitr->first.first.c_str(),ldbitr->first.second);
-      Json::StyledWriter writer;
-      std::string outputConfig = writer.write(hbmsg);
-      clt.sendstring(outputConfig.c_str());
-      if (errno)
-      {
-        //peer did not respond. assume peer is dead, and notify other cs
-        cshdl->ldbsvr_cluster_map.erase(ldbitr);
-        time(&cshdl->timestamp);
-        ip_port dummy_exclude;
-        cshdl->broadcast_update_cluster_state(dummy_exclude);
-        errno = 0; //clear error
-      }
+      ldbsvr_set.push_back(ldbitr->first);
       ldbitr++;
     }
-    //TODO: heartbeat to cluster servers:
+    cshdl->broadcast(ldbsvr_set, hbmsg, _hblserrhdlr);
+    //heartbeat to cluster servers:
+    ip_port dummy;
+    cshdl->broadcast(dummy, hbmsg, _hbcserrhdlr);
+    if (errno)
+    {
+      time(&cshdl->timestamp);
+      ip_port dummy_exclude;
+      cshdl->broadcast_update_cluster_state(dummy_exclude);
+    }
   }
   alarm(HEARTBEAT_RATE);
 }
@@ -297,9 +343,11 @@ void clusterserver::process_cluster_request(std::string& request,
     std::string ip = root["req_args"]["ip"].asString();
     uint16_t port = (uint16_t)root["req_args"]["port"].asInt();
     if (pthread_mutex_lock(&cs->idx_lock)!=0) throw THREAD_ERROR;
+    //update ctbl and cmh:
     uint16_t cluster_id = cs->register_server(ip,port);
-    time(&cs->timestamp);
+    //update ldbsvr_cluster_map:
     cs->ldbsvr_cluster_map[ip_port(ip,port)] = cluster_id;
+    time(&cs->timestamp);
     if (pthread_mutex_unlock(&cs->idx_lock)!=0) throw THREAD_ERROR;
     root.clear();
     root["result"] = "ok";
@@ -406,7 +454,7 @@ uint16_t clusterserver::register_server(const std::string& ip,
   int cluster_id = cmh.get_min_cluster_id();
   ctbl[cluster_id].push_back(ip_port(ip,port));
   cmh.changesz(cluster_id,
-                cmh.heap[cmh.cluster_heap_idx[cluster_id]].second+1);
+               cmh.heap[cmh.cluster_heap_idx[cluster_id]].second+1);
   return cluster_id;
 }
 
@@ -485,6 +533,7 @@ Json::Value clusterserver::get_serialized_state()
 }
 
 //deserilization counterpart to get_serialized_state
+//caller must have already acquired idx_lock
 void
 clusterserver::update_cluster_state(const Json::Value& root)
 {
@@ -528,8 +577,6 @@ std::cout<<"update cluster state"<<std::endl;
        itr1!=root["ldbsvr_cluster_map"].end(); 
        itr1++)
   {
-    cmh.heap.push_back(cluster_id_sz((*itr1)["cluster_id"].asUInt(),
-                                     (*itr1)["cluster_sz"].asUInt()));
     ldbsvr_cluster_map.insert(
       std::pair<ip_port,uint16_t>(
         ip_port( (*itr1)["ip"].asString(),(*itr1)["port"].asUInt() ),
@@ -586,7 +633,9 @@ clusterserver::join_cluster(std::string& joinip, uint16_t joinport)
     exit(1);
   }
   root = root["result"];
+  if (pthread_mutex_lock(&idx_lock)!=0) throw THREAD_ERROR;
   update_cluster_state(root);
+  if (pthread_mutex_unlock(&idx_lock)!=0) throw THREAD_ERROR;
 }
 
 /*
@@ -602,35 +651,49 @@ clusterserver::broadcast_update_cluster_state(const ip_port& peeripport)
   msg["req_type"] = "broadcast_update_cluster_state";
   msg["req_args"] = get_serialized_state();
   broadcast(peeripport, msg);
+}
 
 /*
-  std::map<ip_port,bool>::iterator itr = existing_cs_set.begin();
-  std::map<ip_port,bool>::iterator itr_end = existing_cs_set.end();
-  ip_port selfipport(getip(), getport());
-  while (itr!=itr_end)
+generic broadcast api:
+broadcast msg to all nodes in receiver_set.
+errhdlr is an optional error handler to be called in case any send fails.
+error is swallowed if errhdlr is NULL
+*/
+void
+clusterserver::broadcast(const std::vector<ip_port>& receiver_set,
+                         const Json::Value& msg,
+                         void (*errhdlr)(void*))
+{
+  std::vector<ip_port>::const_iterator itr = receiver_set.begin();
+  while (itr!=receiver_set.end())
   {
-    if (itr->first==exclude ||  //do not broadcast to remote node
-        itr->first==selfipport) //do not broadcast to self
+    client clt(itr->first.c_str(),itr->second);
+    if (errno)
     {
+      if (errhdlr)
+      {
+        ip_port deadnode = *itr;
+        errhdlr((void*)&deadnode);
+      }
+      else errno = 0;
       itr++; continue;
     }
-    //client* cltp = NULL;
-    //create_client(cltp, itr->first);
-    client clt(itr->first.first.c_str(),itr->first.second);
-    Json::Value root;
-    root["req_type"] = "broadcast_update_cluster_state";
-    root["req_args"] = get_serialized_state();
     Json::StyledWriter writer;
-    std::string outputConfig = writer.write(root);
+    std::string outputConfig = writer.write(msg);
     clt.sendstring(outputConfig.c_str());
     itr++;
   }
-*/
 }
 
+/*
+broadcast msg to all other cluster servers in this->existing_cs_set.
+errhdlr is an optional error handler to be called in case any send fails.
+error is swallowed if errhdlr is NULL
+*/
 void
 clusterserver::broadcast(const ip_port& exclude, 
-                         const Json::Value& msg)
+                         const Json::Value& msg,
+                         void (*errhdlr)(void*))
 {
   std::map<ip_port,bool>::iterator itr = existing_cs_set.begin();
   std::map<ip_port,bool>::iterator itr_end = existing_cs_set.end();
@@ -646,6 +709,16 @@ clusterserver::broadcast(const ip_port& exclude,
     //client* cltp = NULL;
     //create_client(cltp, itr->first);
     client clt(itr->first.first.c_str(),itr->first.second);
+    if (errno)
+    {
+      if (errhdlr)
+      {
+        ip_port deadnode = itr->first;
+        errhdlr((void*)&deadnode);
+      }
+      else errno = 0;
+      itr++; continue;
+    }
     Json::StyledWriter writer;
     std::string outputConfig = writer.write(msg);
     clt.sendstring(outputConfig.c_str());
