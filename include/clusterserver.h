@@ -43,6 +43,8 @@ public:
   //error handlers:
   void hbcserrhdlr(ip_port* dead_cs);
   void hblserrhdlr(ip_port* dead_ls);
+  //response handlers:
+  void newmaster_resphdlr(std::string* resp);
 private:
 
   struct cluster_min_heap
@@ -84,13 +86,21 @@ private:
   void broadcast_update_cluster_state(const ip_port& peeripport);
   void broadcast(const ip_port& exclude, 
                  const Json::Value& msg,
-                 void (*errhdlr)(void*) = NULL);
+                 void (*errhdlr)(void*) = NULL,
+                 void (*resphdlr)(void*) = NULL); //only to cs servers
   void broadcast(const std::vector<ip_port>& receiver_set,
                  const Json::Value& msg,
-                 void (*errhdlr)(void*) = NULL);
+                 void (*errhdlr)(void*) = NULL,
+                 void (*resphdlr)(void*) = NULL); //generic broadcast
   void update_cluster_state(const Json::Value& root);
 
   static void heartbeat_handler(int signum);
+
+public:
+  bool master; //indicate whether instance is a master cs
+  bool gothbmsg; //indicate whether received heartbeat. 
+                 //only applicable to non-master cs.
+  bool newmaster_ongoing;
 
 /*
 //we might reuse the following code later, if we decide to maintain 

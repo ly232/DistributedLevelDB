@@ -55,7 +55,10 @@
 #define THREAD_ERROR 11;
 #define DB_FAIL 12;
 #define CLUSTER_FAIL 13;
-//utility apis:
+//utility macros:
+//restart after interrupt:
+#define NO_EINTR(stmt) while ((stmt) == -1 && errno == EINTR);
+//general hash function:
 inline size_t hash(std::string& s)
 {
   size_t len = s.length();

@@ -146,7 +146,7 @@ void* gateserver::send_thread(void* arg)
   while (rmsz>0)
   {
     if (pthread_mutex_lock(&socket_mutex)!=0) throw THREAD_ERROR;
-    byte_sent = write(clfd,resp,rmsz);
+    NO_EINTR(byte_sent = write(clfd,resp,rmsz));
     if (pthread_mutex_unlock(&socket_mutex)!=0) throw THREAD_ERROR;
     if (byte_sent<0) throw FILE_IO_ERROR;
     rmsz -= byte_sent;
@@ -176,7 +176,7 @@ void* gateserver::recv_thread(void* arg)
   {
     memset(buf, 0, BUF_SIZE);
     if (pthread_mutex_lock(&socket_mutex)!=0) throw THREAD_ERROR;
-    byte_received=read(clfd, buf, BUF_SIZE);
+    NO_EINTR(byte_received=read(clfd, buf, BUF_SIZE));
     if (pthread_mutex_unlock(&socket_mutex)!=0) throw THREAD_ERROR;
     if(buf[byte_received-1]=='\0')
       done = true;

@@ -53,37 +53,77 @@ void clusterserver::hblserrhdlr(ip_port* dead_ls)
   ldbsvr_cluster_map.erase(*dead_ls);
   if (pthread_mutex_unlock(&idx_lock)!=0) throw THREAD_ERROR;
 }
-
+void _newmaster_resphdlr(void* arg)
+{
+  if (!arg) return;
+  cshdl->newmaster_resphdlr((std::string*) arg);
+}
+void clusterserver::newmaster_resphdlr(std::string* resp)
+{
+  Json::Value root;
+  Json::Reader reader;
+  if (!reader.parse(*resp, root)) return;
+  if (root["result"]!="accept")
+  {
+    master = false;
+  }
+  else if (!newmaster_ongoing)
+  {
+    master = true;
+    newmaster_ongoing = true;
+  }
+}
 void clusterserver::heartbeat_handler(int signum)
 {
   if (signum==SIGALRM)
   {
-    std::cout<<"will send heartbeat"<<std::endl;
-    Json::Value hbmsg; //dummy msg. ldbsvr does not explicitly reply.
-    hbmsg["req_type"] = "heartbeat";
-    //heartbeat to leveldb servers:
-    std::map<ip_port, uint16_t>::iterator ldbitr = 
-      cshdl->ldbsvr_cluster_map.begin();
-    std::map<ip_port, uint16_t>::iterator lcmend = 
-      cshdl->ldbsvr_cluster_map.end();
-    std::vector<ip_port> ldbsvr_set;
-    while (ldbitr!=lcmend)
+    if (cshdl->master) //master cs: heartbeat to all ls and all slave cs
     {
-      ldbsvr_set.push_back(ldbitr->first);
-      ldbitr++;
+      std::cout<<"will send heartbeat"<<std::endl;
+      Json::Value hbmsg;
+      hbmsg["req_type"] = "heartbeat";
+      //heartbeat to leveldb servers:
+      std::map<ip_port, uint16_t>::iterator ldbitr = 
+        cshdl->ldbsvr_cluster_map.begin();
+      std::map<ip_port, uint16_t>::iterator lcmend = 
+        cshdl->ldbsvr_cluster_map.end();
+      std::vector<ip_port> ldbsvr_set;
+      while (ldbitr!=lcmend)
+      {
+        ldbsvr_set.push_back(ldbitr->first);
+        ldbitr++;
+      }
+      cshdl->broadcast(ldbsvr_set, hbmsg, _hblserrhdlr);
+      //heartbeat to cluster servers:
+      ip_port dummy;
+      cshdl->broadcast(dummy, hbmsg, _hbcserrhdlr);
+      if (errno)
+      {
+        time(&cshdl->timestamp);
+        ip_port dummy_exclude;
+        cshdl->broadcast_update_cluster_state(dummy_exclude);
+      }
     }
-    cshdl->broadcast(ldbsvr_set, hbmsg, _hblserrhdlr);
-    //heartbeat to cluster servers:
-    ip_port dummy;
-    cshdl->broadcast(dummy, hbmsg, _hbcserrhdlr);
-    if (errno)
+    else //slave cs: check heartbeat has previously been received.
     {
-      time(&cshdl->timestamp);
-      ip_port dummy_exclude;
-      cshdl->broadcast_update_cluster_state(dummy_exclude);
+      if (cshdl->gothbmsg)
+      {
+        cshdl->gothbmsg = false;
+      }
+      else
+      {
+        //assume master is dead. elect itself as master (bully algo).
+        std::cout<<"not received hbmsg. assume master dead"<<std::endl;
+        Json::Value newmaster;
+        newmaster["req_type"] = "newmaster";
+        ip_port dummy;
+        cshdl->broadcast(dummy, newmaster, _hbcserrhdlr, 
+                         _newmaster_resphdlr);
+        cshdl->newmaster_ongoing = false;
+      }
     }
+    alarm(HEARTBEAT_RATE);
   }
-  alarm(HEARTBEAT_RATE);
 }
 
 clusterserver::cluster_min_heap::cluster_min_heap()
@@ -150,9 +190,12 @@ uint16_t clusterserver::cluster_min_heap::get_min_cluster_id()
 };
 
 clusterserver::clusterserver(const uint16_t port, 
-			     const char* ip, bool master)
+			     const char* ip, bool mas)
   :server(port, ip),
-   ctbl(MAX_CLUSTER)
+   ctbl(MAX_CLUSTER),
+   master(mas),
+   gothbmsg(false),
+   newmaster_ongoing(false)
 {
   cshdl = this;
   std::cout<<"starting cluster server with ip: "
@@ -163,12 +206,9 @@ clusterserver::clusterserver(const uint16_t port,
     ip_port(getip(),getport()), true
   ));
   time(&timestamp);
-  if (master)
-  {
-    //register alarm to send heartbeat
-    alarm(HEARTBEAT_RATE);
-    signal(SIGALRM, heartbeat_handler);
-  }
+  alarm(HEARTBEAT_RATE);
+  signal(SIGALRM, heartbeat_handler);
+  siginterrupt(SIGALRM, 0); //restart syscall if interrupted by SIGALRM
 }
 
 clusterserver::~clusterserver()
@@ -265,7 +305,7 @@ void* clusterserver::send_thread(void* arg)
   while (rmsz>0)
   {
     if (pthread_mutex_lock(&socket_mutex)!=0) throw THREAD_ERROR;
-    byte_sent = write(clfd,resp,rmsz);
+    NO_EINTR(byte_sent = write(clfd,resp,rmsz));
     if (pthread_mutex_unlock(&socket_mutex)!=0) throw THREAD_ERROR;
     if (byte_sent<0) throw FILE_IO_ERROR;
     rmsz -= byte_sent;
@@ -300,7 +340,7 @@ void* clusterserver::recv_thread(void* arg)
   {
     memset(buf, 0, BUF_SIZE);
     if (pthread_mutex_lock(&socket_mutex)!=0) throw THREAD_ERROR;
-    byte_received=read(clfd, buf, BUF_SIZE);
+    NO_EINTR(byte_received=read(clfd, buf, BUF_SIZE));
     if (pthread_mutex_unlock(&socket_mutex)!=0) throw THREAD_ERROR;
     if(buf[byte_received-1]=='\0')
       done = true;
@@ -424,7 +464,6 @@ void clusterserver::process_cluster_request(std::string& request,
     cs->existing_cs_set[peeripport] = true;
     if (pthread_mutex_unlock(&cs->idx_lock)!=0) throw THREAD_ERROR;
     //now process request:
-    Json::StyledWriter writer;
     root.clear();
     root["status"] = "OK";
     root["result"] = cs->get_serialized_state();
@@ -438,9 +477,22 @@ void clusterserver::process_cluster_request(std::string& request,
     cs->existing_cs_set.erase(peeripport);
     if (pthread_mutex_unlock(&cs->idx_lock)!=0) throw THREAD_ERROR;
   }
+  else if (req_type=="heartbeat")
+  {
+    cs->gothbmsg = true;
+  }
+  else if (req_type=="newmaster")
+  {
+    if (cs->master || cs->gothbmsg) root["result"] = "reject";
+    else
+    {
+      cs->gothbmsg = true;
+      root["result"] = "accept";
+    }
+  }
   else //unrecognized request
   {
-    root["result"] = "";
+    root["result"] = "invalid request";
   }
   response = writer.write(root);
 }
@@ -662,7 +714,8 @@ error is swallowed if errhdlr is NULL
 void
 clusterserver::broadcast(const std::vector<ip_port>& receiver_set,
                          const Json::Value& msg,
-                         void (*errhdlr)(void*))
+                         void (*errhdlr)(void*),
+                         void (*resphdlr)(void*))
 {
   std::vector<ip_port>::const_iterator itr = receiver_set.begin();
   while (itr!=receiver_set.end())
@@ -680,7 +733,8 @@ clusterserver::broadcast(const std::vector<ip_port>& receiver_set,
     }
     Json::StyledWriter writer;
     std::string outputConfig = writer.write(msg);
-    clt.sendstring(outputConfig.c_str());
+    std::string resp = clt.sendstring(outputConfig.c_str());
+    if (resphdlr) resphdlr((void*)&resp);
     itr++;
   }
 }
@@ -693,7 +747,8 @@ error is swallowed if errhdlr is NULL
 void
 clusterserver::broadcast(const ip_port& exclude, 
                          const Json::Value& msg,
-                         void (*errhdlr)(void*))
+                         void (*errhdlr)(void*),
+                         void (*resphdlr)(void*))
 {
   std::map<ip_port,bool>::iterator itr = existing_cs_set.begin();
   std::map<ip_port,bool>::iterator itr_end = existing_cs_set.end();
@@ -721,7 +776,8 @@ clusterserver::broadcast(const ip_port& exclude,
     }
     Json::StyledWriter writer;
     std::string outputConfig = writer.write(msg);
-    clt.sendstring(outputConfig.c_str());
+    std::string resp = clt.sendstring(outputConfig.c_str());
+    if (resphdlr) resphdlr((void*)&resp);
     itr++;
   }
 }

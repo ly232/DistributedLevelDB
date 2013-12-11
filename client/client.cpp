@@ -126,7 +126,7 @@ void* client::send_thread(void* arg)
       memset(buf,0,BUF_SIZE);
       memcpy(buf, p, cpsz);
       pthread_mutex_lock(&sock_mutex);
-      byte_sent = write(sock_fd, buf, cpsz);
+      (byte_sent = write(sock_fd, buf, cpsz));
       if (byte_sent<0)
       {
         printf("client sendstring write faile. sockfd=%d, errno=%d\n",sock_fd,errno);
