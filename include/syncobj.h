@@ -13,8 +13,10 @@
 class syncobj
 {
 public:
-  //mutexes and cond vars used by gateserver threads
-  syncobj(size_t nthread, size_t nmutex, size_t ncv);
+  //see example usage pattern in gateserver::main_thread
+  syncobj(size_t nthread, //num threads, used in ptread_create
+          size_t nmutex,  //num mux
+          size_t ncv);    //num cv
   ~syncobj();
   std::vector<pthread_t> _thread_obj_arr;
   std::vector<pthread_mutex_t> _mutex_arr;

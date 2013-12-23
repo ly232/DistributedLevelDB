@@ -16,6 +16,7 @@
 #include <ifaddrs.h>
 #include <string>
 #include <string.h>
+#include <sstream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>

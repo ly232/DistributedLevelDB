@@ -10,11 +10,9 @@ leveldbserver::leveldbserver(const uint16_t cluster_svr_port,
 			     std::string cluster_svr_ip,
 			     const char ip[],
 			     std::string dbdir)
-  :server(port, ip), _cluster_svr_port(cluster_svr_port)
+  :server(port, ip), _cluster_svr_port(cluster_svr_port), chordso(1,2,1)
 {
-  _cluster_svr_ip = (cluster_svr_ip=="")?getip():cluster_svr_ip;
-std::cout<<"cluster ip:"<<_cluster_svr_ip<<std::endl;
-std::cout<<"db dir: "<<dbdir<<std::endl;
+  //open leveldb connection:
   options.create_if_missing = true;
   status = leveldb::DB::Open(options, dbdir, &db);
   if (!status.ok())
@@ -22,6 +20,10 @@ std::cout<<"db dir: "<<dbdir<<std::endl;
     std::cerr<<"error: leveldb open fail"<<std::endl;
     throw DB_FAIL;
   }
+  //join an existing cluster:
+  _cluster_svr_ip = (cluster_svr_ip=="")?getip():cluster_svr_ip;
+  std::cout<<"cluster ip:"<<_cluster_svr_ip<<std::endl;
+  std::cout<<"db dir: "<<dbdir<<std::endl;
   join_cluster();
 }
 
@@ -83,6 +85,8 @@ void* leveldbserver::main_thread(void* arg)
   return 0;
 }
 
+// contact a cluster server to join cluster.
+// cs will also give a ldbsvr ip/port for this routine to setup chord
 void leveldbserver::join_cluster()
 {
 std::cout<<"calling join_cluster to ip "
@@ -106,6 +110,28 @@ std::cout<<"calling join_cluster to ip "
   }
   if (root["result"]!="ok")
     std::cerr<<"error: leveldbserver::join_cluster failed"<<std::endl;
+
+  //spawn chord thread:
+  ip_port joinAddr(root["chordJoinIP"].asString(),
+                   root["chordJoinPort"].asUInt());
+  std::cout<<"join chord ldbsvr--"<<joinAddr.first<<":"<<joinAddr.second<<std::endl;
+  ip_port selfAddr(getip(), getport());
+  chordhdl = new chordModuleNS::chordModule(selfAddr, joinAddr);
+  if (pthread_create(&chordso._thread_obj_arr[0],
+		     0, 
+		     &chord_init, 
+		     (void*)this)
+      !=0) 
+    throw THREAD_ERROR;
+}
+
+void* leveldbserver::chord_init(void* arg)
+{
+  while (true)
+  {
+    
+  }
+  return 0;
 }
 
 void leveldbserver::leave_cluster()
@@ -129,6 +155,7 @@ std::cout<<"calling leave_cluster"<<std::endl;
   }
   if (root["result"]!="ok")
     std::cerr<<"error: leveldbserver::join_cluster failed"<<std::endl;
+  delete chordhdl;
 }
 
 void leveldbserver::requestHandler(int clfd)
